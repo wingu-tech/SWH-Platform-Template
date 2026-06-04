@@ -31,18 +31,12 @@ module "iam" {
   count  = var.create_iam ? 1 : 0
   source = "./modules/iam"
 
-  client_name       = var.client_name
-  environment       = var.environment
-  aws_account_id    = var.aws_account_id
-  github_org        = var.github_org
-  github_infra_repo = var.github_infra_repo
-  cluster_name      = local.cluster_name
-
-  # Always trust the sourcecode repo so app-deploy.yml can assume the CICD role
-  additional_oidc_repos = concat(
-    var.additional_oidc_repos,
-    ["${var.github_org}/${var.github_sourcecode_repo}"]
-  )
+  client_name          = var.client_name
+  environment          = var.environment
+  aws_account_id       = var.aws_account_id
+  github_org           = var.github_org
+  github_platform_repo = var.github_platform_repo
+  cluster_name         = local.cluster_name
 }
 
 # ── EKS ───────────────────────────────────────────────────────────────────────
