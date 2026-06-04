@@ -15,6 +15,7 @@ locals {
 # ── GuardDuty ─────────────────────────────────────────────────────────────────
 
 resource "aws_guardduty_detector" "main" {
+  count  = var.create_account_security ? 1 : 0
   enable = true
 
   datasources {
@@ -152,8 +153,9 @@ resource "aws_cloudtrail" "main" {
 # ── AWS Config ────────────────────────────────────────────────────────────────
 
 resource "aws_config_configuration_recorder" "main" {
+  count    = var.create_account_security ? 1 : 0
   name     = "${local.name_prefix}-config-recorder"
-  role_arn = aws_iam_role.config.arn
+  role_arn = var.create_account_security ? aws_iam_role.config.arn : ""
 
   recording_group {
     all_supported                 = true
@@ -206,15 +208,17 @@ resource "aws_s3_bucket_policy" "config" {
 }
 
 resource "aws_config_delivery_channel" "main" {
+  count          = var.create_account_security ? 1 : 0
   name           = "${local.name_prefix}-config-delivery"
   s3_bucket_name = aws_s3_bucket.config.bucket
   depends_on     = [aws_config_configuration_recorder.main, aws_s3_bucket_policy.config]
 }
 
 resource "aws_config_configuration_recorder_status" "main" {
+  count      = var.create_account_security ? 1 : 0
   name       = aws_config_configuration_recorder.main.name
   is_enabled = true
-  depends_on = [aws_config_delivery_channel.main]
+  depends_on = [aws_config_delivery_channel.main[0]]
 }
 
 # IAM role for Config
@@ -246,7 +250,7 @@ resource "aws_config_config_rule" "root_mfa" {
     source_identifier = "ROOT_ACCOUNT_MFA_ENABLED"
   }
 
-  depends_on = [aws_config_configuration_recorder_status.main]
+  depends_on = [aws_config_configuration_recorder_status.main[0]]
 }
 
 resource "aws_config_config_rule" "iam_password_policy" {
@@ -268,7 +272,7 @@ resource "aws_config_config_rule" "iam_password_policy" {
     MaxPasswordAge             = "90"
   })
 
-  depends_on = [aws_config_configuration_recorder_status.main]
+  depends_on = [aws_config_configuration_recorder_status.main[0]]
 }
 
 resource "aws_config_config_rule" "s3_public_access" {
@@ -280,7 +284,7 @@ resource "aws_config_config_rule" "s3_public_access" {
     source_identifier = "S3_BUCKET_LEVEL_PUBLIC_ACCESS_PROHIBITED"
   }
 
-  depends_on = [aws_config_configuration_recorder_status.main]
+  depends_on = [aws_config_configuration_recorder_status.main[0]]
 }
 
 resource "aws_config_config_rule" "eks_secrets_encrypted" {
@@ -292,7 +296,7 @@ resource "aws_config_config_rule" "eks_secrets_encrypted" {
     source_identifier = "EKS_SECRETS_ENCRYPTED"
   }
 
-  depends_on = [aws_config_configuration_recorder_status.main]
+  depends_on = [aws_config_configuration_recorder_status.main[0]]
 }
 
 # ── SSM Parameter Store ───────────────────────────────────────────────────────

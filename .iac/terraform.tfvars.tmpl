@@ -12,8 +12,10 @@ environment    = "{{ENVIRONMENT}}"
 client_domain  = "{{CLIENT_DOMAIN}}"
 
 # ── GitHub ───────────────────────────────────────────────────────────────────
-github_org           = "{{GITHUB_ORG}}"
-github_platform_repo = "{{CLIENT_NAME}}-platform"
+github_org             = "{{GITHUB_ORG}}"
+github_infra_repo      = "{{CLIENT_NAME}}-infra"
+github_sourcecode_repo = "{{CLIENT_NAME}}-sourcecode"
+additional_oidc_repos  = []
 
 # ── State Backend ─────────────────────────────────────────────────────────────
 tf_state_bucket     = "{{TF_STATE_BUCKET}}"
@@ -25,10 +27,12 @@ create_vpc        = true
 create_iam        = true
 create_eks        = true
 create_monitoring = true
-create_security   = true
-create_kubernetes = true
+create_security         = true
+create_account_security = true  # set false only when multiple clients share one AWS account
+create_kubernetes       = true
 
 github_pat_ssm_path = "/{{CLIENT_NAME}}/github/pat"
+# Set grafana_github_oauth_ssm_path after adding OAuth creds via prereqs.sh --grafana-oauth-client-id
 grafana_github_oauth_ssm_path = ""
 
 # ── Existing Network (only needed if create_vpc = false) ─────────────────────

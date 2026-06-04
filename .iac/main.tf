@@ -85,11 +85,12 @@ module "security" {
   count  = var.create_security ? 1 : 0
   source = "./modules/security"
 
-  client_name     = var.client_name
-  environment     = var.environment
-  aws_account_id  = var.aws_account_id
-  aws_region      = var.aws_region
-  tf_state_bucket = var.tf_state_bucket
+  client_name             = var.client_name
+  environment             = var.environment
+  aws_account_id          = var.aws_account_id
+  aws_region              = var.aws_region
+  tf_state_bucket         = var.tf_state_bucket
+  create_account_security = var.create_account_security
 }
 
 # ── Kubernetes (namespaces + ArgoCD + ApplicationSet) ─────────────────────────

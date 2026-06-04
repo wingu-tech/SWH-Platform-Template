@@ -61,7 +61,7 @@ variable "create_monitoring" {
 }
 
 variable "create_security" {
-  description = "Enable GuardDuty, CloudTrail, AWS Config, and SSM baseline."
+  description = "Enable security resources (CloudTrail, SSM baseline)."
   type        = bool
   default     = true
 }
@@ -175,4 +175,10 @@ variable "tf_state_lock_table" {
   description = "DynamoDB table name for Terraform state locking."
   type        = string
   default     = "terraform-state-lock"
+}
+
+variable "create_account_security" {
+  description = "Create account-level resources (GuardDuty, AWS Config recorder). Set false when multiple clients share one AWS account — e.g. testing. Default true."
+  type        = bool
+  default     = true
 }
