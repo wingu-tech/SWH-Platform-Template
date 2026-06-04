@@ -17,7 +17,7 @@ on:
     branches:
       - main
     paths:
-      - ".iac/**"
+      - "terraform/**"
   workflow_dispatch:
     inputs:
       destroy:
@@ -32,7 +32,7 @@ permissions:
 
 env:
   TF_VERSION: "1.6.6"
-  WORKING_DIR: "./.iac"
+  WORKING_DIR: "./terraform"
   AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
   TF_STATE_LOCK_TABLE: ${{ secrets.TF_STATE_LOCK_TABLE || 'terraform-state-lock' }}
 
@@ -235,11 +235,12 @@ jobs:
 
           echo "ApplicationSet applied — ArgoCD will now sync application/* folders"
 
-      - name: Trigger initial app builds on sourcecode repo
+      - name: Trigger initial app builds
         working-directory: ${{ env.WORKING_DIR }}
         run: |
           CLIENT=$(terraform output -raw client_name)
-          SOURCECODE_REPO="${{ github.repository_owner }}/${CLIENT}-sourcecode"
+          # Single-repo mode: app-deploy.yml lives in this same repo (platform repo)
+          SOURCECODE_REPO="${{ github.repository }}"
 
           # Retrieve the GitHub PAT stored in SSM during bootstrap
           PAT=$(aws ssm get-parameter \
