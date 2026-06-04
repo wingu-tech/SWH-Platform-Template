@@ -1,5 +1,5 @@
 output "guardduty_detector_id" {
-  value = aws_guardduty_detector.main.id
+  value = var.create_account_security ? aws_guardduty_detector.main[0].id : ""
 }
 
 output "cloudtrail_name" {
@@ -11,5 +11,5 @@ output "cloudtrail_bucket" {
 }
 
 output "config_recorder_name" {
-  value = aws_config_configuration_recorder.main.name
+  value = var.create_account_security ? aws_config_configuration_recorder.main[0].name : ""
 }

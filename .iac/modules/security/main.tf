@@ -216,7 +216,7 @@ resource "aws_config_delivery_channel" "main" {
 
 resource "aws_config_configuration_recorder_status" "main" {
   count      = var.create_account_security ? 1 : 0
-  name       = aws_config_configuration_recorder.main.name
+  name       = aws_config_configuration_recorder.main[0].name
   is_enabled = true
   depends_on = [aws_config_delivery_channel.main[0]]
 }
