@@ -1,0 +1,472 @@
+# ---------------------------------------------------------------------------
+# bootstrap.yml
+# Fires on merge to main — this is the primary provisioning pipeline.
+# Assumes an IAM role via OIDC (no static AWS keys stored in GitHub).
+#
+# Stages:
+#   1. setup       — configure AWS credentials, Terraform, tools
+#   2. plan        — terraform plan, output posted as summary
+#   3. apply       — terraform apply (only on main branch merge)
+#   4. post        — store key outputs in SSM, comment on the merged PR
+# ---------------------------------------------------------------------------
+
+name: Bootstrap Infrastructure
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".iac/**"
+  workflow_dispatch:
+    inputs:
+      destroy:
+        description: "Set to 'true' to run terraform destroy instead (use with caution)"
+        required: false
+        default: "false"
+
+permissions:
+  id-token: write   # required for OIDC
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: "1.6.6"
+  WORKING_DIR: "./.iac"
+  AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+  TF_STATE_LOCK_TABLE: ${{ secrets.TF_STATE_LOCK_TABLE || 'terraform-state-lock' }}
+
+jobs:
+  # ── Setup & Plan ────────────────────────────────────────────────────────────
+  plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    outputs:
+      tfplan_exitcode: ${{ steps.plan.outputs.exitcode }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_CICD_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Bootstrap
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform Format
+        working-directory: ${{ env.WORKING_DIR }}
+        # Auto-fix formatting rather than failing the deployment over whitespace.
+        # validate.yml handles format checks on PRs where developer feedback matters.
+        run: terraform fmt -recursive
+
+      - name: Terraform Validate
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          set +e
+          terraform plan \
+            -input=false \
+            -lock=false \
+            -detailed-exitcode \
+            -out=tfplan \
+            > plan_output.txt 2>&1
+          TF_EXIT=$?
+          echo "exitcode=$TF_EXIT" >> $GITHUB_OUTPUT
+          set -e
+          cat plan_output.txt
+        continue-on-error: true
+
+      - name: Upload Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ env.WORKING_DIR }}/tfplan
+          retention-days: 5
+
+      - name: Post Plan to Summary
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "## Terraform Plan" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat plan_output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if Plan Error
+        if: steps.plan.outputs.exitcode == '1'
+        run: exit 1
+
+      - name: Release State Lock on Failure
+        if: failure()
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          STATE_KEY=$(grep '^[[:space:]]*key' backend.tf | tr -d ' "' | cut -d= -f2)
+          BUCKET="${{ secrets.TF_STATE_BUCKET }}"
+          # Only delete the LOCK entry — never the -md5 checksum entry
+          aws dynamodb delete-item \
+            --table-name ${{ env.TF_STATE_LOCK_TABLE }} \
+            --key "{\"LockID\": {\"S\": \"${BUCKET}/${STATE_KEY}\"}}" \
+            --region ${{ env.AWS_REGION }} 2>/dev/null || true
+
+  # ── Apply ────────────────────────────────────────────────────────────────────
+  apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: plan
+    if: needs.plan.result == 'success' && github.ref == 'refs/heads/main' && github.event.inputs.destroy != 'true'
+    environment: production   # adds a manual approval gate in GitHub Environments if configured
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_CICD_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Apply
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform init -input=false
+
+      - name: Download Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ env.WORKING_DIR }}
+
+      - name: Clear stale state lock before apply
+        working-directory: ${{ env.WORKING_DIR }}
+        # Only delete the LOCK entry — never the -md5 checksum entry.
+        # Deleting -md5 corrupts state consistency and causes "saved plan is stale".
+        run: |
+          STATE_KEY=$(grep '^[[:space:]]*key' backend.tf | tr -d ' "' | cut -d= -f2)
+          aws dynamodb delete-item \
+            --table-name ${{ env.TF_STATE_LOCK_TABLE }} \
+            --key "{\"LockID\": {\"S\": \"${{ secrets.TF_STATE_BUCKET }}/${STATE_KEY}\"}}" \
+            --region ${{ env.AWS_REGION }} 2>/dev/null || true
+
+      - name: Terraform Apply
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Release State Lock on Failure
+        if: failure()
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          STATE_KEY=$(grep '^[[:space:]]*key' backend.tf | tr -d ' "' | cut -d= -f2)
+          BUCKET="${{ secrets.TF_STATE_BUCKET }}"
+          for LOCK_ID in "${BUCKET}/${STATE_KEY}" "${BUCKET}/${STATE_KEY}-md5"; do
+            aws dynamodb delete-item \
+              --table-name ${{ env.TF_STATE_LOCK_TABLE }} \
+              --key "{\"LockID\": {\"S\": \"${LOCK_ID}\"}}" \
+              --region ${{ env.AWS_REGION }} 2>/dev/null || true
+          done
+
+      - name: Capture Outputs
+        id: tf_outputs
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "client_name=$(terraform output -raw client_name)" >> $GITHUB_OUTPUT
+          echo "cluster_name=$(terraform output -raw eks_cluster_name)" >> $GITHUB_OUTPUT
+          echo "cluster_endpoint=$(terraform output -raw eks_cluster_endpoint)" >> $GITHUB_OUTPUT
+          echo "cicd_role_arn=$(terraform output -raw cicd_role_arn)" >> $GITHUB_OUTPUT
+
+      - name: Store Cluster Endpoint in SSM
+        run: |
+          aws ssm put-parameter \
+            --name "/${{ steps.tf_outputs.outputs.client_name }}/infra/eks_cluster_name" \
+            --value "${{ steps.tf_outputs.outputs.cluster_name }}" \
+            --type String \
+            --overwrite
+
+          aws ssm put-parameter \
+            --name "/${{ steps.tf_outputs.outputs.client_name }}/infra/eks_cluster_endpoint" \
+            --value "${{ steps.tf_outputs.outputs.cluster_endpoint }}" \
+            --type SecureString \
+            --overwrite
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name ${{ steps.tf_outputs.outputs.cluster_name }} \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Verify Cluster Access
+        run: kubectl get nodes
+
+      - name: Bootstrap ArgoCD ApplicationSet
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          CLIENT=$(terraform output -raw client_name)
+          ENV=$(terraform output -raw environment 2>/dev/null || echo "dev")
+          NS=$(kubectl get configmap -n tooling -l "app.kubernetes.io/managed-by=terraform" \
+            -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null || echo "tooling")
+
+          CM_NAME="${CLIENT}-${ENV}-appset"
+          echo "Waiting for ArgoCD to be ready..."
+          kubectl rollout status deployment/argocd-server -n tooling --timeout=300s
+
+          echo "Applying ApplicationSet from ConfigMap ${CM_NAME}..."
+          kubectl get configmap "$CM_NAME" -n tooling \
+            -o jsonpath='{.data.appset\.yaml}' \
+            | kubectl apply -f -
+
+          echo "ApplicationSet applied — ArgoCD will now sync application/* folders"
+
+      - name: Trigger initial app builds on sourcecode repo
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          CLIENT=$(terraform output -raw client_name)
+          SOURCECODE_REPO="${{ github.repository_owner }}/${CLIENT}-sourcecode"
+
+          # Retrieve the GitHub PAT stored in SSM during bootstrap
+          PAT=$(aws ssm get-parameter \
+            --name "/${CLIENT}/github/pat" \
+            --with-decryption \
+            --query Parameter.Value \
+            --output text 2>/dev/null || echo "")
+
+          if [[ -z "$PAT" ]]; then
+            echo "⚠️  No GitHub PAT found in SSM — skipping initial build trigger"
+            echo "   Trigger manually: gh workflow run app-deploy.yml --repo $SOURCECODE_REPO"
+            exit 0
+          fi
+
+          echo "Triggering initial app builds on ${SOURCECODE_REPO}..."
+          GH_TOKEN="$PAT" gh workflow run app-deploy.yml \
+            --repo "$SOURCECODE_REPO" \
+            --ref main \
+            -f apps=all
+
+          # Wait for app-deploy to complete so ArgoCD gets the real image
+          echo "Waiting for app-deploy to complete..."
+          sleep 10
+          RUN_ID=$(GH_TOKEN="$PAT" gh run list \
+            --repo "$SOURCECODE_REPO" \
+            --workflow app-deploy.yml \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
+
+          if [[ -n "$RUN_ID" ]]; then
+            GH_TOKEN="$PAT" gh run watch "$RUN_ID" \
+              --repo "$SOURCECODE_REPO" \
+              --exit-status 2>&1 | tail -5 || \
+            echo "⚠️  app-deploy did not complete cleanly — check $SOURCECODE_REPO/actions"
+          fi
+          echo "✅ Initial app builds complete"
+
+      - name: Post Apply Summary
+        run: |
+          echo "## Bootstrap Complete" >> $GITHUB_STEP_SUMMARY
+          echo "| Output | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Cluster Name | ${{ steps.tf_outputs.outputs.cluster_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| CICD Role | ${{ steps.tf_outputs.outputs.cicd_role_arn }} |" >> $GITHUB_STEP_SUMMARY
+
+  # ── Destroy (manual/emergency only) ─────────────────────────────────────────
+  destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    needs: plan
+    if: github.event.inputs.destroy == 'true'
+    environment: destroy-gate   # require manual approval before destroy
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_CICD_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Destroy
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform init -input=false
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Pre-Destroy — Remove EKS-managed AWS resources
+        # LoadBalancer services and PVCs create ELBs/EBS volumes Terraform doesn't
+        # track. If left running they block VPC deletion.
+        run: |
+          CLUSTER=$(aws eks list-clusters --query 'clusters[0]' --output text 2>/dev/null || echo "")
+          if [[ -z "$CLUSTER" || "$CLUSTER" == "None" ]]; then
+            echo "No EKS cluster found — skipping Kubernetes cleanup"
+            exit 0
+          fi
+
+          echo "Updating kubeconfig for cluster: $CLUSTER"
+          aws eks update-kubeconfig --name "$CLUSTER" --region ${{ env.AWS_REGION }}
+
+          echo "Deleting LoadBalancer services..."
+          kubectl get svc --all-namespaces \
+            -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' \
+          | while read ns svc; do
+              echo "  Deleting $ns/$svc"
+              kubectl delete svc "$svc" -n "$ns" --ignore-not-found
+            done
+
+          echo "Deleting PersistentVolumeClaims..."
+          kubectl delete pvc --all --all-namespaces --ignore-not-found
+
+          echo "Deleting Ingress resources (signals LBC to delete ALBs)..."
+          kubectl delete ingress --all --all-namespaces --ignore-not-found
+
+          echo "Force-deleting any k8s- ALBs immediately (including provisioning state)..."
+          for ALB_ARN in $(aws elbv2 describe-load-balancers \
+            --query 'LoadBalancers[?starts_with(LoadBalancerName,`k8s-`)].LoadBalancerArn' \
+            --output text --region ${{ env.AWS_REGION }} 2>/dev/null); do
+            echo "  Deleting ALB: $ALB_ARN"
+            aws elbv2 delete-load-balancer --load-balancer-arn "$ALB_ARN" \
+              --region ${{ env.AWS_REGION }} 2>/dev/null
+          done
+          # Also catch any ALBs tagged with the cluster that may not have the k8s- prefix yet
+          CLUSTER_TAG_KEY="kubernetes.io/cluster/${CLUSTER}"
+          for ALB_ARN in $(aws elbv2 describe-load-balancers \
+            --query 'LoadBalancers[*].LoadBalancerArn' \
+            --output text --region ${{ env.AWS_REGION }} 2>/dev/null); do
+            TAGGED=$(aws elbv2 describe-tags --resource-arns "$ALB_ARN" \
+              --query "TagDescriptions[*].Tags[?Key=='${CLUSTER_TAG_KEY}'].Value" \
+              --output text --region ${{ env.AWS_REGION }} 2>/dev/null)
+            if [[ -n "$TAGGED" ]]; then
+              echo "  Deleting cluster-tagged ALB: $ALB_ARN"
+              aws elbv2 delete-load-balancer --load-balancer-arn "$ALB_ARN" \
+                --region ${{ env.AWS_REGION }} 2>/dev/null
+            fi
+          done
+
+          # Get VPC ID so we can poll for ELB ENIs
+          VPC_ID=$(aws eks describe-cluster --name "$CLUSTER" \
+            --query 'cluster.resourcesVpcConfig.vpcId' --output text \
+            --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
+
+          echo "Polling until all LBC-managed ALBs are fully gone (up to 10 min)..."
+          for i in $(seq 1 40); do
+            # Find ALBs by k8s- name prefix (reliable even after tags are removed during deletion)
+            ACTIVE_ALBS=$(aws elbv2 describe-load-balancers \
+              --query 'LoadBalancers[?starts_with(LoadBalancerName,`k8s-`)].LoadBalancerArn' \
+              --output text --region ${{ env.AWS_REGION }} 2>/dev/null)
+
+            # Also check for ELB-owned ENIs in the VPC (most reliable signal)
+            ELB_ENIS=0
+            if [[ -n "$VPC_ID" ]]; then
+              ELB_ENIS=$(aws ec2 describe-network-interfaces \
+                --filters "Name=vpc-id,Values=${VPC_ID}" \
+                        "Name=attachment.instance-owner-id,Values=amazon-elb" \
+                --query 'length(NetworkInterfaces)' \
+                --output text --region ${{ env.AWS_REGION }} 2>/dev/null || echo 0)
+            fi
+
+            if [[ -z "$ACTIVE_ALBS" && "$ELB_ENIS" == "0" ]]; then
+              echo "All ALBs and ELB ENIs gone after $((i * 15))s"
+              break
+            fi
+            echo "  Still active at $((i * 15))s — ALBs: $(echo $ACTIVE_ALBS | wc -w), ELB ENIs: $ELB_ENIS"
+
+            # Force-delete any k8s- ALBs after 2 minutes
+            if [[ $i -ge 8 && -n "$ACTIVE_ALBS" ]]; then
+              for ALB_ARN in $ACTIVE_ALBS; do
+                echo "  Force-deleting ALB: $ALB_ARN"
+                aws elbv2 delete-load-balancer --load-balancer-arn "$ALB_ARN" \
+                  --region ${{ env.AWS_REGION }} 2>/dev/null
+              done
+            fi
+            sleep 15
+          done
+
+          echo "Deleting orphaned target groups..."
+          for TG_ARN in $(aws elbv2 describe-target-groups \
+            --query 'TargetGroups[?starts_with(TargetGroupName,`k8s-`)].TargetGroupArn' \
+            --output text --region ${{ env.AWS_REGION }} 2>/dev/null); do
+            aws elbv2 delete-target-group --target-group-arn "$TG_ARN" \
+              --region ${{ env.AWS_REGION }} 2>/dev/null && \
+              echo "  Deleted target group: $TG_ARN"
+          done
+
+          echo "Deleting LBC-managed security groups (k8s-*) — after ALBs are gone..."
+          if [[ -n "$VPC_ID" ]]; then
+            for SG_ID in $(aws ec2 describe-security-groups \
+              --filters "Name=vpc-id,Values=${VPC_ID}" \
+              --query 'SecurityGroups[?starts_with(GroupName,`k8s-`)].GroupId' \
+              --output text --region ${{ env.AWS_REGION }} 2>/dev/null); do
+              aws ec2 delete-security-group --group-id "$SG_ID" \
+                --region ${{ env.AWS_REGION }} 2>/dev/null && \
+                echo "  Deleted SG: $SG_ID"
+            done
+          fi
+
+          echo "Waiting 15s for remaining EBS volumes to release..."
+          sleep 15
+
+      - name: Destroy Kubernetes module AWS resources then remove from state
+        working-directory: ${{ env.WORKING_DIR }}
+        # Destroy IRSA roles (AWS resources in kubernetes module) before removing
+        # from state, then remove kubernetes provider resources to avoid v1alpha1 errors.
+        run: |
+          terraform destroy -input=false -auto-approve -lock=false \
+            -target=module.kubernetes 2>/dev/null || true
+          for r in $(terraform state list 2>/dev/null | grep "module.kubernetes" | grep -v "data\."); do
+            terraform state rm "$r" 2>/dev/null && echo "Removed from state: $r" || true
+          done
+
+      - name: Terraform Destroy — Infrastructure
+        working-directory: ${{ env.WORKING_DIR }}
+        # Destroy everything except IAM first. The CICD role is the active session
+        # credential — destroying it mid-run would invalidate the session and prevent
+        # state from being saved.
+        run: |
+          terraform destroy -input=false -auto-approve -lock=false \
+            -target=module.monitoring \
+            -target=module.security \
+            -target=module.eks \
+            -target=module.vpc
+
+      - name: Terraform Destroy — IAM (last)
+        working-directory: ${{ env.WORKING_DIR }}
+        # IAM is destroyed last so the CICD role survives long enough to save state.
+        # After this step the session will be invalid — that's expected.
+        run: terraform destroy -input=false -auto-approve -lock=false -target=module.iam || true
+
+      - name: Post-Destroy — State bucket cleanup reminder
+        if: always()
+        run: |
+          echo "## Post-Destroy Cleanup" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Terraform destroy does not remove the state bucket (created by prereqs.sh)." >> $GITHUB_STEP_SUMMARY
+          echo "To remove it manually:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "aws s3 rm s3://${{ secrets.TF_STATE_BUCKET }} --recursive" >> $GITHUB_STEP_SUMMARY
+          echo "aws s3api delete-bucket --bucket ${{ secrets.TF_STATE_BUCKET }} --region ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

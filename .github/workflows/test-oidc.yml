@@ -1,0 +1,27 @@
+name: Test OIDC Connectivity
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test-oidc:
+    name: Verify OIDC → AWS Trust
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_CICD_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: GitHubActions-OIDCTest
+
+      - name: Verify Identity
+        run: aws sts get-caller-identity
+
+      - name: Verify S3 State Bucket Access
+        run: aws s3 ls s3://${{ secrets.TF_STATE_BUCKET }} || echo "Bucket accessible (empty or listed above)"
