@@ -10,6 +10,149 @@ This single repository contains everything for the **{{CLIENT_NAME}}** environme
 
 ---
 
+## Developer Prerequisites
+
+Install the following tools before working with this repository.
+
+### AWS CLI v2
+
+Required to authenticate to AWS and get cluster credentials.
+
+```bash
+# macOS
+brew install awscli
+
+# Linux
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
+unzip awscliv2.zip && sudo ./aws/install
+```
+
+Verify: `aws --version`
+
+Configure with credentials that can assume the developer role in this account:
+
+```bash
+aws configure
+```
+
+---
+
+### kubectl
+
+Required to connect to the EKS cluster, view pods/logs, and troubleshoot.
+
+```bash
+# macOS
+brew install kubectl
+
+# Linux
+curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+```
+
+Verify: `kubectl version --client`
+
+Connect to the cluster (run once, or after credentials expire):
+
+```bash
+aws eks update-kubeconfig \
+  --name {{CLIENT_NAME}}-eks-dev \
+  --region us-east-1 \
+  --role-arn arn:aws:iam::<account-id>:role/{{CLIENT_NAME}}-dev-developer-role
+```
+
+---
+
+### git
+
+```bash
+# macOS — ships with Xcode Command Line Tools
+xcode-select --install
+
+# Linux
+sudo apt-get install git       # Debian/Ubuntu
+sudo yum install git           # RHEL/Amazon Linux
+```
+
+---
+
+### Docker
+
+Required to build and test application images locally before pushing.
+
+```bash
+# macOS — install Docker Desktop
+# https://www.docker.com/products/docker-desktop/
+
+# Linux
+sudo apt-get install docker.io    # Debian/Ubuntu
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER     # log out and back in after this
+```
+
+Verify: `docker --version`
+
+---
+
+### Node.js >= 18 (frontend development)
+
+Required only if you are working on React frontend code locally.
+
+```bash
+# macOS
+brew install node
+
+# Linux / any OS (recommended — use nvm)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+source ~/.bashrc
+nvm install 20 && nvm use 20
+```
+
+Verify: `node --version`
+
+---
+
+### Python 3.9+ (backend development)
+
+Required only if you are working on Flask backend code locally.
+
+```bash
+# macOS
+brew install python@3.12
+
+# Linux
+sudo apt-get install python3 python3-pip    # Debian/Ubuntu
+sudo yum install python3 python3-pip        # RHEL/Amazon Linux
+```
+
+Install backend dependencies for local development:
+
+```bash
+cd application/<your-app>/backend
+pip3 install -r requirements.txt
+```
+
+Verify: `python3 --version`
+
+---
+
+### GitHub CLI (optional but recommended)
+
+Useful for triggering workflows, viewing run logs, and managing PRs from the terminal.
+
+```bash
+# macOS
+brew install gh
+
+# Linux
+sudo apt-get install gh    # after adding the GitHub CLI apt repo
+# See: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+```
+
+Authenticate: `gh auth login`
+
+---
+
 ## Repository Layout
 
 ```
@@ -94,18 +237,34 @@ Use any value between **30–99** for your app.
 
 ---
 
-## First-time Setup (one-time, run locally)
+## Accessing Platform Services
 
-The GitHub Actions OIDC role is created by Terraform, so the first apply
-must run locally to bootstrap it:
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| Splash Page | `http://<alb-dns>/` | — |
+| ArgoCD | `http://<alb-dns>/argocd` | user: `admin`, password from SSM (see below) |
+| Grafana | `http://<alb-dns>/grafana` | user: `admin`, password from SSM (see below) |
+
+Get the ALB DNS name:
 
 ```bash
-cd .iac
-terraform init
-terraform apply -target=module.iam -auto-approve
+kubectl get ingress -n application
 ```
 
-Then merge the bootstrap PR to trigger full provisioning via GitHub Actions.
+Get service passwords from SSM:
+
+```bash
+# ArgoCD
+kubectl get secret argocd-initial-admin-secret -n tooling \
+  -o jsonpath="{.data.password}" | base64 -d
+
+# Grafana
+aws ssm get-parameter \
+  --name "/{{CLIENT_NAME}}/grafana/admin_password" \
+  --with-decryption \
+  --query Parameter.Value \
+  --output text
+```
 
 ---
 
@@ -113,7 +272,7 @@ Then merge the bootstrap PR to trigger full provisioning via GitHub Actions.
 
 | Secret | Description |
 |--------|-------------|
-| `AWS_CICD_ROLE_ARN` | IAM role ARN for GitHub Actions (from first local apply) |
+| `AWS_CICD_ROLE_ARN` | IAM role ARN for GitHub Actions (set by bootstrap pipeline) |
 | `AWS_REGION` | AWS region (default: `us-east-1`) |
 | `TF_STATE_BUCKET` | S3 bucket for Terraform state |
 | `TF_STATE_LOCK_TABLE` | DynamoDB table for state locking |
