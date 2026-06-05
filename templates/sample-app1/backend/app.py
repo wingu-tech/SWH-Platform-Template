@@ -1,9 +1,13 @@
+import os
 from flask import Flask, jsonify, send_from_directory
 
-app = Flask(__name__, static_folder="static", static_url_path="")
+# APP_PATH is injected at build time (e.g. "/app1").
+# Flask serves static assets under this prefix so ALB routes them correctly.
+APP_PATH = os.environ.get("APP_PATH", "")
+app = Flask(__name__, static_folder="static", static_url_path=APP_PATH)
 
-@app.route("/sample-app1")
-@app.route("/sample-app1/")
+@app.route(f"{APP_PATH}")
+@app.route(f"{APP_PATH}/")
 def index():
     return send_from_directory(app.static_folder, "index.html")
 
