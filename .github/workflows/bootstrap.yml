@@ -233,7 +233,13 @@ jobs:
             -o jsonpath='{.data.appset\.yaml}' \
             | kubectl apply -f -
 
-          echo "ApplicationSet applied — ArgoCD will now sync application/* folders"
+          echo "Applying Splash Page Application..."
+          SPLASHPAGE_CM="${CLIENT}-${ENV}-splashpage-app"
+          kubectl get configmap "$SPLASHPAGE_CM" -n tooling \
+            -o jsonpath='{.data.splashpage-app\.yaml}' \
+            | kubectl apply -f -
+
+          echo "ApplicationSet and Splash Page applied — ArgoCD will now sync"
 
       - name: Trigger initial app builds
         working-directory: ${{ env.WORKING_DIR }}
