@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: splash-page
+  namespace: application
+  labels:
+    app: splash-page
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: splash-page
+  template:
+    metadata:
+      labels:
+        app: splash-page
+    spec:
+      containers:
+        - name: splash-page
+          image: public.ecr.aws/nginx/nginx:alpine
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
