@@ -186,9 +186,14 @@ resource "kubernetes_config_map" "argocd_appset_manifest" {
       spec = {
         generators = [{
           git = {
-            repoURL     = local.sourcecode_url
-            revision    = "HEAD"
-            directories = [{ path = "application/*" }]
+            repoURL  = local.sourcecode_url
+            revision = "HEAD"
+            directories = [
+              { path = "application/*" },
+              # Folders with [ in the name are special/reserved (e.g. "sample-app1[Splash Page]")
+              # and are deployed as standalone Applications, not via this ApplicationSet.
+              { path = "application/*[*", exclude = true },
+            ]
           }
         }]
         template = {
@@ -209,6 +214,46 @@ resource "kubernetes_config_map" "argocd_appset_manifest" {
               syncOptions = ["CreateNamespace=true"]
             }
           }
+        }
+      }
+    })
+  }
+
+  depends_on = [helm_release.argocd]
+}
+
+# ── ArgoCD Application — Splash Page ─────────────────────────────────────────
+# The splash page lives in a bracketed folder (excluded from the ApplicationSet)
+# so it gets its own explicit Application manifest stored as a ConfigMap.
+
+resource "kubernetes_config_map" "argocd_splashpage_manifest" {
+  metadata {
+    name      = "${local.name_prefix}-splashpage-app"
+    namespace = kubernetes_namespace.tooling.metadata[0].name
+  }
+
+  data = {
+    "splashpage-app.yaml" = yamlencode({
+      apiVersion = "argoproj.io/v1alpha1"
+      kind       = "Application"
+      metadata = {
+        name      = "sample-app1"
+        namespace = kubernetes_namespace.tooling.metadata[0].name
+      }
+      spec = {
+        project = "default"
+        source = {
+          repoURL        = local.sourcecode_url
+          targetRevision = "HEAD"
+          path           = "application/sample-app1[Splash Page]/k8s"
+        }
+        destination = {
+          server    = "https://kubernetes.default.svc"
+          namespace = var.app_namespace
+        }
+        syncPolicy = {
+          automated   = { prune = true, selfHeal = true }
+          syncOptions = ["CreateNamespace=true"]
         }
       }
     })
