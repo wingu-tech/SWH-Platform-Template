@@ -6,6 +6,7 @@
 This single repository contains everything for the **{{CLIENT_NAME}}** environment:
 - **`.iac/`** — Terraform infrastructure (VPC, EKS, IAM, ArgoCD, Grafana, monitoring, security)
 - **`application/`** — Application source code deployed via ArgoCD GitOps
+- **`templates/`** — Starter templates for creating new applications
 
 ---
 
@@ -18,20 +19,21 @@ This single repository contains everything for the **{{CLIENT_NAME}}** environme
   modules/
     vpc/  iam/  eks/  monitoring/  security/  kubernetes/
 
-application/                  ← Application workloads
-  splash-page/                ← Platform home page (always deployed, do not remove)
+application/                  ← Application workloads (ArgoCD watches this folder)
+  splash-page/                ← Platform home page — always deployed, do not remove
     Dockerfile
-    backend/                  ← Flask API — serves the React SPA and /api/apps discovery
-    frontend/                 ← React SPA — dynamic landing page
+    backend/                  ← Flask API: serves the React SPA and /api/apps discovery
+    frontend/                 ← React SPA: dynamic landing page with app tiles
     k8s/
       deployment.yaml
       service.yaml
       ingress.yaml            ← group.order: 100 (catch-all at /)
       pdb.yaml
+  your-app/                   ← Your apps go here — copy from templates/ to get started
 
-  templates/                  ← Reference templates — copy these to create a new app
-    sample-app1/              ← Hello World starter template
-    README.md                 ← Instructions for creating a new app
+templates/                    ← Starter templates (not deployed — copy into application/)
+  sample-app1/                ← Hello World Flask + React starter
+  README.md                   ← Instructions for creating a new app
 
 docs/
   ADDING_AN_APP.md            ← Step-by-step guide for deploying a new application
@@ -47,39 +49,38 @@ docs/
 ## The Splash Page
 
 `application/splash-page/` is the **platform home page** served at `/`. It is always deployed
-and is managed as a dedicated ArgoCD Application (not auto-discovered).
+and managed as a dedicated ArgoCD Application.
 
 **What it does:** the splash page dynamically discovers all deployed services and applications
 by reading Kubernetes Ingress resources in the `application` namespace at runtime. Every app
 you deploy under `application/` automatically appears as a navigation card on the home page —
 no manual configuration needed.
 
-**Do not remove or rename this folder.** It is required for platform navigation.
+**Do not remove or rename this folder.**
 
 ---
 
 ## Deploying a New Application
 
-To create your own app, copy a template from `application/templates/` into `application/`:
+Copy a starter template from `templates/` into `application/`:
 
 ```bash
 # 1. Copy the template
-cp -r application/templates/sample-app1 application/my-app
+cp -r templates/sample-app1 application/my-app
 
-# 2. Rename all references inside the new folder
-#    Replace "sample-app1" with "my-app" in all files
+# 2. Rename all "sample-app1" references to "my-app" inside the new folder
 
-# 3. Update k8s/ingress.yaml:
-#      - Set path: /my-app
-#      - Pick a unique group.order between 30-99
+# 3. In k8s/ingress.yaml — set your path and a unique group.order (30–99):
+#      path: /my-app
+#      group.order: "30"
 
-# 4. Push to main — ArgoCD syncs automatically and the tile appears on the splash page
+# 4. Push to main
 git add application/my-app
 git commit -m "feat: add my-app"
 git push
 ```
 
-See `docs/ADDING_AN_APP.md` for a full walkthrough.
+ArgoCD picks it up automatically and a tile appears on the platform home page. See `docs/ADDING_AN_APP.md` for a full walkthrough.
 
 ### Reserved ALB group.order values
 
@@ -104,7 +105,7 @@ terraform init
 terraform apply -target=module.iam -auto-approve
 ```
 
-Then clear the state locks (see output from prereqs.sh) and merge the bootstrap PR.
+Then merge the bootstrap PR to trigger full provisioning via GitHub Actions.
 
 ---
 
