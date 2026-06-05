@@ -190,9 +190,11 @@ resource "kubernetes_config_map" "argocd_appset_manifest" {
             revision = "HEAD"
             directories = [
               { path = "application/*" },
-              # Folders with [ in the name are special/reserved (e.g. "sample-app1[Splash Page]")
-              # and are deployed as standalone Applications, not via this ApplicationSet.
-              { path = "application/*[*", exclude = true },
+              # splash-page is deployed as a static Application (always-on home page)
+              { path = "application/splash-page", exclude = true },
+              # templates/ are reference copies, not real deployments
+              { path = "application/templates", exclude = true },
+              { path = "application/templates/*", exclude = true },
             ]
           }
         }]
@@ -237,7 +239,7 @@ resource "kubernetes_config_map" "argocd_splashpage_manifest" {
       apiVersion = "argoproj.io/v1alpha1"
       kind       = "Application"
       metadata = {
-        name      = "sample-app1"
+        name      = "splash-page"
         namespace = kubernetes_namespace.tooling.metadata[0].name
       }
       spec = {
@@ -245,7 +247,7 @@ resource "kubernetes_config_map" "argocd_splashpage_manifest" {
         source = {
           repoURL        = local.sourcecode_url
           targetRevision = "HEAD"
-          path           = "application/sample-app1[Splash Page]/k8s"
+          path           = "application/splash-page/k8s"
         }
         destination = {
           server    = "https://kubernetes.default.svc"
