@@ -1,4 +1,4 @@
-# {{CLIENT_NAME}}-platform
+# {{CLIENT_NAME}}
 
 > Auto-generated from [wingu-tech/SWH-Platform-Template](https://github.com/wingu-tech/SWH-Platform-Template)
 > by the EKSclientPortal bootstrap pipeline.
