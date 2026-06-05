@@ -1,7 +1,21 @@
 # Adding a New Application
 
-Every folder under `application/` is an independent app. The pipeline discovers
-it automatically — no config changes needed anywhere else.
+Every folder under `application/` (except `splash-page/` and `templates/`) is an
+independent app. ArgoCD discovers and deploys it automatically — no config changes
+needed anywhere else. Once deployed, the app tile appears on the platform home page.
+
+---
+
+## Quick Start
+
+The fastest way to create a new app is to copy the starter template:
+
+```bash
+cp -r application/templates/sample-app1 application/your-app-name
+```
+
+Then rename all occurrences of `sample-app1` to `your-app-name` inside the new folder,
+update the ingress path, and push.
 
 ---
 
@@ -14,231 +28,80 @@ application/
     k8s/
       deployment.yaml     ← required — runs your container
       service.yaml        ← required — exposes it inside the cluster
-      ingress.yaml        ← required — puts it on the shared ALB
-      pdb.yaml            ← recommended — keeps one replica up during node drain
-    src/                  ← your application code (any structure you want)
+      ingress.yaml        ← required — routes ALB traffic to your app
+      pdb.yaml            ← optional but recommended — keeps 1 pod running during node drains
 ```
 
-> **Naming rules:** Use lowercase letters, numbers, and hyphens only.
-> No underscores — Kubernetes rejects them in resource names.
-> ✅ `my-app` ✅ `payments-api` ❌ `my_app`
+> **Reserved folders** — do not create apps named `splash-page` or inside `templates/`.
+> These are excluded from ArgoCD auto-discovery:
+> - `application/splash-page/` — platform home page, always-on
+> - `application/templates/` — reference templates, not deployed
 
 ---
 
-## Step 1 — Copy sample-app1
+## Step-by-step
 
-The fastest start is copying the sample app and renaming everything:
+### 1. Copy the template
 
 ```bash
-cp -r application/sample-app1 application/your-app-name
+cp -r application/templates/sample-app1 application/your-app-name
 ```
 
-Then update every place `sample-app1` appears in the `k8s/` files to `your-app-name`.
+### 2. Rename references
 
----
+Replace every occurrence of `sample-app1` with `your-app-name` in:
+- `k8s/deployment.yaml` (metadata.name, labels, selector, container name)
+- `k8s/service.yaml` (metadata.name, selector)
+- `k8s/ingress.yaml` (metadata.name, backend service name)
+- `k8s/pdb.yaml` (metadata.name, selector)
+- `frontend/package.json` ("name" field)
 
-## Step 2 — k8s/deployment.yaml
+### 3. Set your ingress path
 
-Replace `sample-app1` with your app name. The image field is managed by the pipeline —
-leave it as the nginx placeholder for now, the workflow will update it on first push.
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: your-app-name            # ← change this
-  namespace: application
-  labels:
-    app: your-app-name           # ← change this
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: your-app-name         # ← change this
-  template:
-    metadata:
-      labels:
-        app: your-app-name       # ← change this
-    spec:
-      containers:
-        - name: your-app-name    # ← change this
-          image: public.ecr.aws/nginx/nginx:alpine   # pipeline replaces this automatically
-          ports:
-            - containerPort: 8080    # ← match your app's port
-          readinessProbe:
-            httpGet:
-              path: /health          # ← match your health endpoint
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 20
-          resources:
-            requests:
-              cpu: "100m"
-              memory: "128Mi"
-            limits:
-              cpu: "250m"
-              memory: "256Mi"
-```
-
----
-
-## Step 3 — k8s/service.yaml
+In `k8s/ingress.yaml`, set a unique path and group order:
 
 ```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: your-app-name       # ← change this
-  namespace: application
-spec:
-  selector:
-    app: your-app-name      # ← change this — must match deployment labels
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 8080      # ← match your container port
-  type: ClusterIP
-```
-
----
-
-## Step 4 — k8s/ingress.yaml
-
-This is what puts your app on the shared ALB. Every new app gets its own path — the
-path should match your app folder name.
-
-**How routing works:**
-- `/` is reserved for the platform splash page (`sample-app1`) — don't use it
-- ArgoCD lives at `/argocd` (priority 10) and Grafana at `/grafana` (priority 20)
-- Your app goes at `/<your-app-name>` with a `group.order` between 20 and 100
-
-**group.order** — controls which rules are checked first. Lower number = checked first.
-New apps with specific paths should use `30`, `40`, `50`, etc.
-
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: your-app-name           # ← change this
-  namespace: application
-  annotations:
-    kubernetes.io/ingress.class: alb
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/group.name: shared          # never change this
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
-    alb.ingress.kubernetes.io/healthcheck-path: /health   # ← match your health endpoint
-    alb.ingress.kubernetes.io/group.order: "30"           # ← pick a unique number (30-99)
+annotations:
+  alb.ingress.kubernetes.io/group.order: "30"   # pick an unused value 30–99
 spec:
   rules:
     - http:
         paths:
-          - path: /your-app-name    # ← your path, or / for catch-all
+          - path: /your-app-name
             pathType: Prefix
-            backend:
-              service:
-                name: your-app-name # ← change this
-                port:
-                  number: 80
 ```
 
-### group.order quick reference
+**Reserved group.order values:**
 
-| Value | Used by | Notes |
-|-------|---------|-------|
-| `10` | ArgoCD (`/argocd`) | Reserved |
-| `20` | Grafana (`/grafana`) | Reserved |
-| `30–99` | Your apps | Pick any unused number |
-| `100` | sample-app1 (`/`) | Splash page catch-all — reserved, don't use |
+| Order | Service     |
+|-------|-------------|
+| 10    | ArgoCD      |
+| 20    | Grafana     |
+| 100   | Splash Page |
 
-> **Base path configuration:** Since your app is served at `/<your-app-name>`,
-> your code needs to know about this prefix.
-> - **React:** set `"homepage": "/<your-app-name>"` in `package.json`
-> - **Flask:** set `APPLICATION_ROOT = '/<your-app-name>'` or use a Blueprint with `url_prefix`
-> - **Node/Express:** mount routes with `app.use('/<your-app-name>', router)`
->
-> Without this, asset paths (`/static/js/main.js`) won't resolve correctly.
-
----
-
-## Step 5 — k8s/pdb.yaml
-
-Keeps at least one replica running during node maintenance or scaling events.
-
-```yaml
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: your-app-name       # ← change this
-  namespace: application
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app: your-app-name    # ← change this — must match deployment labels
-```
-
----
-
-## Step 6 — Dockerfile
-
-Build your image. The multi-stage sample builds React then serves via Flask/gunicorn.
-Adapt to your stack — the only requirement is that the final image listens on the
-port you set in `deployment.yaml`.
-
-```dockerfile
-FROM your-base-image AS build
-WORKDIR /app
-COPY . .
-RUN your-build-command
-
-FROM your-runtime-image
-WORKDIR /app
-COPY --from=build /app/dist ./dist
-EXPOSE 8080
-CMD ["your-start-command"]
-```
-
----
-
-## Step 7 — Push to main
-
-Once your files are in place, push to `main`:
+### 4. Push to main
 
 ```bash
-git add application/your-app-name/
+git add application/your-app-name
 git commit -m "feat: add your-app-name"
-git push origin main
+git push
 ```
 
-**What happens automatically:**
-1. `app-deploy.yml` detects `application/your-app-name/` changed
-2. Creates an ECR repo named `your-app-name` (if it doesn't exist)
-3. Builds the Docker image from `application/your-app-name/Dockerfile`
-4. Tags it with a timestamp (`MMddyyyyHHmm`) and pushes to ECR
-5. Updates `k8s/deployment.yaml` with the real image tag and commits back
-6. ArgoCD detects the commit and deploys your app to the `application` namespace
-7. The shared ALB picks up the new Ingress rule within ~30 seconds
-
-**Check deployment status in ArgoCD:**
-```
-http://<alb-dns>/argocd
-```
+The `app-deploy.yml` workflow builds the Docker image, pushes it to ECR, and ArgoCD
+syncs the manifests. Within a couple of minutes the app is live at `/your-app-name`
+and a card appears on the platform home page at `/`.
 
 ---
 
-## Checklist
+## Backend route prefix
 
-- [ ] Folder name uses hyphens not underscores
-- [ ] `deployment.yaml` — name, labels, container port, health path updated
-- [ ] `service.yaml` — name and selector updated, targetPort matches container port
-- [ ] `ingress.yaml` — name, path, group.order (unique 30–99), healthcheck-path updated
-- [ ] `pdb.yaml` — name and selector updated
-- [ ] `Dockerfile` — builds and exposes correct port
-- [ ] Pushed to `main` — pipeline triggers automatically
+Your Flask app must serve routes under the same path prefix as the ingress. Example:
+
+```python
+@app.route("/your-app-name")
+@app.route("/your-app-name/")
+def index():
+    return send_from_directory(app.static_folder, "index.html")
+```
+
+The starter template in `application/templates/sample-app1/` already has this wired up.
