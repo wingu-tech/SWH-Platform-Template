@@ -479,16 +479,43 @@ jobs:
             terraform state rm "$r" 2>/dev/null && echo "Removed from state: $r" || true
           done
 
-      - name: Terraform Destroy — Infrastructure
+      - name: Terraform Destroy — EKS + Monitoring + Security
         working-directory: ${{ env.WORKING_DIR }}
-        # Destroy everything except IAM first. The CICD role is the active session
-        # credential — destroying it mid-run would invalidate the session and prevent
-        # state from being saved.
+        # Destroy EKS first so worker nodes are terminated and release their ENIs.
+        # k8s-traffic SGs are attached to node ENIs — they cannot be deleted while
+        # nodes are running, which is why the pre-destroy SG cleanup always fails on them.
         run: |
           terraform destroy -input=false -auto-approve -lock=false \
             -target=module.monitoring \
             -target=module.security \
-            -target=module.eks \
+            -target=module.eks
+
+      - name: Post-EKS — Clean up k8s- security groups
+        # Now that EKS nodes are gone their ENIs are released and k8s- SGs can be deleted.
+        run: |
+          VPC_ID=$(aws ec2 describe-vpcs \
+            --filters "Name=tag:ManagedBy,Values=terraform" \
+            --query 'Vpcs[0].VpcId' --output text \
+            --region ${{ env.AWS_REGION }} 2>/dev/null || echo "")
+          if [[ -z "$VPC_ID" || "$VPC_ID" == "None" ]]; then
+            echo "No VPC found — skipping SG cleanup"
+            exit 0
+          fi
+          echo "Cleaning up k8s- SGs in VPC $VPC_ID..."
+          for SG_ID in $(aws ec2 describe-security-groups \
+            --filters "Name=vpc-id,Values=${VPC_ID}" \
+            --query 'SecurityGroups[?starts_with(GroupName,`k8s-`)].GroupId' \
+            --output text --region ${{ env.AWS_REGION }} 2>/dev/null); do
+            aws ec2 delete-security-group --group-id "$SG_ID" \
+              --region ${{ env.AWS_REGION }} 2>/dev/null && \
+              echo "  Deleted SG: $SG_ID" || \
+              echo "  Could not delete $SG_ID"
+          done
+
+      - name: Terraform Destroy — VPC
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          terraform destroy -input=false -auto-approve -lock=false \
             -target=module.vpc
 
       - name: Terraform Destroy — IAM (last)
