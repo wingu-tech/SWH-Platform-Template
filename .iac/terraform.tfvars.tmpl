@@ -25,7 +25,7 @@ create_iam              = true
 create_eks              = true
 create_monitoring       = true
 create_security         = true
-create_account_security = true  # set false only when multiple clients share one AWS account
+create_account_security = false  # set true only when this is a dedicated single-client AWS account
 create_kubernetes       = true
 
 github_pat_ssm_path           = "/{{CLIENT_NAME}}/github/pat"
