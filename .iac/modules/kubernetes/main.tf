@@ -192,9 +192,6 @@ resource "kubernetes_config_map" "argocd_appset_manifest" {
               { path = "application/*" },
               # splash-page is deployed as a static Application (always-on home page)
               { path = "application/splash-page", exclude = true },
-              # templates/ are reference copies, not real deployments
-              { path = "application/templates", exclude = true },
-              { path = "application/templates/*", exclude = true },
             ]
           }
         }]
