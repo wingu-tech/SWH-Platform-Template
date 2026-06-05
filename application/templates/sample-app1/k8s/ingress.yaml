@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sample-app1
+  namespace: application
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/group.name: shared
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /api/health
+    # Set group.order between 20-99 (lower = higher priority than other apps, higher = lower)
+    # Do not use 10 (ArgoCD), 20 (Grafana), or 100 (splash-page catch-all)
+    alb.ingress.kubernetes.io/group.order: "30"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /sample-app1
+            pathType: Prefix
+            backend:
+              service:
+                name: sample-app1
+                port:
+                  number: 80
