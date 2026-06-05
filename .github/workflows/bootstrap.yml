@@ -422,7 +422,28 @@ jobs:
               echo "  Deleted target group: $TG_ARN"
           done
 
-          echo "Deleting LBC-managed security groups (k8s-*) — after ALBs are gone..."
+          echo "Revoking cross-SG references to k8s- SGs (EKS node SGs hold refs)..."
+          if [[ -n "$VPC_ID" ]]; then
+            K8S_SGS=$(aws ec2 describe-security-groups \
+              --filters "Name=vpc-id,Values=${VPC_ID}" \
+              --query 'SecurityGroups[?starts_with(GroupName,`k8s-`)].GroupId' \
+              --output text --region ${{ env.AWS_REGION }} 2>/dev/null || true)
+            for K8S_SG in $K8S_SGS; do
+              while IFS=$'\t' read -r RULE_ID OWNER_SG; do
+                [[ -z "$RULE_ID" || "$RULE_ID" == "None" ]] && continue
+                aws ec2 revoke-security-group-ingress \
+                  --group-id "$OWNER_SG" \
+                  --security-group-rule-ids "$RULE_ID" \
+                  --region ${{ env.AWS_REGION }} 2>/dev/null && \
+                  echo "  Revoked rule $RULE_ID from $OWNER_SG" || true
+              done < <(aws ec2 describe-security-group-rules \
+                --filters "Name=referenced-group-id,Values=${K8S_SG}" \
+                --query 'SecurityGroupRules[*].[SecurityGroupRuleId,GroupId]' \
+                --output text --region ${{ env.AWS_REGION }} 2>/dev/null || true)
+            done
+          fi
+
+          echo "Deleting LBC-managed security groups (k8s-*) after refs revoked..."
           if [[ -n "$VPC_ID" ]]; then
             for attempt in 1 2 3; do
               REMAINING_SGS=$(aws ec2 describe-security-groups \
@@ -433,14 +454,14 @@ jobs:
                 echo "  No k8s- security groups remaining"
                 break
               fi
-              echo "  Attempt $attempt — deleting k8s- SGs: $REMAINING_SGS"
+              echo "  Attempt $attempt - deleting k8s- SGs: $REMAINING_SGS"
               for SG_ID in $REMAINING_SGS; do
                 aws ec2 delete-security-group --group-id "$SG_ID" \
                   --region ${{ env.AWS_REGION }} 2>/dev/null && \
                   echo "  Deleted SG: $SG_ID" || \
                   echo "  Could not delete $SG_ID yet (will retry)"
               done
-              [[ $attempt -lt 3 ]] && sleep 20
+              [[ $attempt -lt 3 ]] && sleep 15
             done
           fi
 
