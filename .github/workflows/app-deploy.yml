@@ -2,16 +2,14 @@
 # app-deploy.yml
 #
 # Triggers:
-#   - push to main touching application/** → builds only changed app folders
-#   - workflow_dispatch (apps=all)         → builds ALL application/* folders
+#   - push to main touching application/** -> builds only changed app folders
+#   - workflow_dispatch (apps=all)         -> builds ALL application/* folders
 #     (called automatically at end of bootstrap to seed ECR on first deploy)
 #
 # For each app:
-#   1. Create ECR repository if it doesn't exist
-#   2. Build Docker image from application/<name>/Dockerfile
-#   3. Push with timestamp tag (MMddyyyyHHmm)
-#   4. Update application/<name>/k8s/deployment.yaml with new image
-#   5. Commit back — ArgoCD picks up the change and deploys
+#   1. Create ECR repository if it does not exist
+#   2. If a Dockerfile is present: build, push, update k8s/deployment.yaml, commit
+#   3. If no Dockerfile: ECR repo is created only (no build/push)
 # ---------------------------------------------------------------------------
 
 name: App Deploy
@@ -53,13 +51,11 @@ jobs:
         id: changed
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            # Build all apps in application/ directory
             APPS=$(find application -maxdepth 1 -mindepth 1 -type d \
               | sed 's|application/||' \
               | sort -u \
               | jq -R -s -c 'split("\n") | map(select(length > 0))')
           else
-            # Build only apps changed in this push
             APPS=$(git diff --name-only HEAD~1 HEAD \
               | grep '^application/' \
               | cut -d'/' -f2 \
@@ -70,7 +66,7 @@ jobs:
           echo "Apps to build: $APPS"
 
   build-push:
-    name: Build & Push — ${{ matrix.app }}
+    name: Build & Push -- ${{ matrix.app }}
     runs-on: ubuntu-latest
     needs: detect
     if: needs.detect.outputs.apps != '[]'
@@ -104,9 +100,21 @@ jobs:
           ECR_REGISTRY="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
           echo "registry=$ECR_REGISTRY" >> $GITHUB_OUTPUT
           echo "repo=$ECR_REGISTRY/$REPO_NAME" >> $GITHUB_OUTPUT
-          echo "ECR repo: $ECR_REGISTRY/$REPO_NAME"
+          echo "ECR repo ready: $ECR_REGISTRY/$REPO_NAME"
+
+      - name: Check for Dockerfile
+        id: dockerfile
+        run: |
+          if [[ -f "application/${{ matrix.app }}/Dockerfile" ]]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Dockerfile found — will build and push"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "No Dockerfile found — ECR repo created, skipping build"
+          fi
 
       - name: Build Docker image
+        if: steps.dockerfile.outputs.exists == 'true'
         run: |
           TAG=$(date -u +"%m%d%Y%H%M")
           APP_DIR="application/${{ matrix.app }}"
@@ -116,6 +124,7 @@ jobs:
           echo "TAG=$TAG" >> $GITHUB_ENV
 
       - name: Push to ECR
+        if: steps.dockerfile.outputs.exists == 'true'
         run: |
           aws ecr get-login-password --region ${{ env.AWS_REGION }} \
             | docker login --username AWS --password-stdin ${{ steps.ecr.outputs.registry }}
@@ -123,11 +132,15 @@ jobs:
           echo "Pushed: $IMAGE"
 
       - name: Update deployment.yaml with new image
+        if: steps.dockerfile.outputs.exists == 'true'
         run: |
           DEPLOY="application/${{ matrix.app }}/k8s/deployment.yaml"
-          sed -i "s|image:.*|image: $IMAGE|" "$DEPLOY"
+          if [[ -f "$DEPLOY" ]]; then
+            sed -i "s|image:.*|image: $IMAGE|" "$DEPLOY"
+          fi
 
       - name: Commit updated image tag
+        if: steps.dockerfile.outputs.exists == 'true'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
