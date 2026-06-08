@@ -1,8 +1,5 @@
 # ---------------------------------------------------------------------------
 # Root Outputs
-# These are also stored in SSM Parameter Store by the security module
-# so downstream pipelines (Harness, ArgoCD) can reference them without
-# needing Terraform state access.
 # ---------------------------------------------------------------------------
 
 output "client_name" {
@@ -43,21 +40,6 @@ output "eks_cluster_ca_certificate" {
 }
 
 output "cicd_role_arn" {
-  description = "IAM role ARN used by GitHub Actions / Harness for deployments."
+  description = "IAM role ARN used by GitHub Actions for deployments."
   value       = var.create_iam ? module.iam[0].cicd_role_arn : null
-}
-
-output "admin_role_arn" {
-  description = "IAM role ARN for admin access."
-  value       = var.create_iam ? module.iam[0].admin_role_arn : null
-}
-
-output "developer_role_arn" {
-  description = "IAM role ARN for developer access."
-  value       = var.create_iam ? module.iam[0].developer_role_arn : null
-}
-
-output "readonly_role_arn" {
-  description = "IAM role ARN for read-only access."
-  value       = var.create_iam ? module.iam[0].readonly_role_arn : null
 }
