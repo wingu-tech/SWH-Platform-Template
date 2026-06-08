@@ -59,7 +59,6 @@ module "eks" {
 
   # Pass the cicd role ARN so it's added to aws-auth from the start
   cicd_role_arn  = var.create_iam ? module.iam[0].cicd_role_arn : ""
-  admin_role_arn = var.create_iam ? module.iam[0].admin_role_arn : ""
 
   depends_on = [module.vpc, module.iam]
 }
