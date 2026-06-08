@@ -31,6 +31,11 @@ create_kubernetes       = true
 github_pat_ssm_path           = "/{{CLIENT_NAME}}/github/pat"
 grafana_github_oauth_ssm_path = ""
 
+# ── IAM Permissions Boundary ─────────────────────────────────────────────────
+# Required in accounts that enforce boundary policies.
+# Set to the ARN of the boundary policy, or leave empty if not required.
+permissions_boundary = ""
+
 # ── Existing Network (only needed if create_vpc = false) ─────────────────────
 existing_vpc_id             = ""
 existing_private_subnet_ids = []
