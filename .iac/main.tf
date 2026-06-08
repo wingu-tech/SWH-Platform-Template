@@ -37,6 +37,7 @@ module "iam" {
   github_org           = var.github_org
   github_platform_repo = var.github_platform_repo
   cluster_name         = local.cluster_name
+  permissions_boundary = var.permissions_boundary
 }
 
 # ── EKS ───────────────────────────────────────────────────────────────────────
