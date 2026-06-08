@@ -63,6 +63,7 @@ resource "aws_iam_role" "cicd" {
   name                 = "${local.name_prefix}-cicd-role"
   assume_role_policy   = data.aws_iam_policy_document.github_actions_assume.json
   max_session_duration = 3600
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
 
   tags = {
     Name = "${local.name_prefix}-cicd-role"
@@ -98,8 +99,9 @@ data "aws_iam_policy_document" "assume_role_policy" {
 }
 
 resource "aws_iam_role" "admin" {
-  name               = "${local.name_prefix}-admin-role"
-  assume_role_policy = data.aws_iam_policy_document.assume_role_policy.json
+  name                 = "${local.name_prefix}-admin-role"
+  assume_role_policy   = data.aws_iam_policy_document.assume_role_policy.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
 
   tags = {
     Name = "${local.name_prefix}-admin-role"
@@ -114,8 +116,9 @@ resource "aws_iam_role_policy_attachment" "admin_policy" {
 # ── Developer Role ────────────────────────────────────────────────────────────
 
 resource "aws_iam_role" "developer" {
-  name               = "${local.name_prefix}-developer-role"
-  assume_role_policy = data.aws_iam_policy_document.assume_role_policy.json
+  name                 = "${local.name_prefix}-developer-role"
+  assume_role_policy   = data.aws_iam_policy_document.assume_role_policy.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
 
   tags = {
     Name = "${local.name_prefix}-developer-role"
@@ -202,8 +205,9 @@ resource "aws_iam_role_policy_attachment" "developer_policy" {
 # ── Readonly Role ─────────────────────────────────────────────────────────────
 
 resource "aws_iam_role" "readonly" {
-  name               = "${local.name_prefix}-readonly-role"
-  assume_role_policy = data.aws_iam_policy_document.assume_role_policy.json
+  name                 = "${local.name_prefix}-readonly-role"
+  assume_role_policy   = data.aws_iam_policy_document.assume_role_policy.json
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
 
   tags = {
     Name = "${local.name_prefix}-readonly-role"
