@@ -182,3 +182,9 @@ variable "create_account_security" {
   type        = bool
   default     = true
 }
+
+variable "permissions_boundary" {
+  description = "ARN of the IAM permissions boundary policy to attach to all created roles. Required in accounts that enforce boundary policies (e.g. arn:aws:iam::<account>:policy/Deny_Default_VPC). Leave empty if not required."
+  type        = string
+  default     = ""
+}
