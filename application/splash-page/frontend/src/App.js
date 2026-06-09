@@ -25,20 +25,28 @@ const s = {
 export default function App() {
   const [customApps, setCustomApps] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [clientName, setClientName] = useState('');
 
   useEffect(() => {
+    fetch('/api/config')
+      .then(r => r.json())
+      .then(data => setClientName(data.client_name || ''))
+      .catch(() => {});
+
     fetch('/api/apps')
       .then(r => r.json())
       .then(data => { setCustomApps(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
+  const title = clientName ? `${clientName} Home Dashboard` : 'Platform Home Dashboard';
+
   return (
     <div style={s.page}>
       <div style={s.header}>
-        <h1 style={s.title}>SWH Platform</h1>
+        <h1 style={s.title}>{title}</h1>
         <p style={s.sub}>
-          Your platform home. Navigate to deployed services and applications below.
+          Navigate to platform services and deployed applications below.
           Apps appear automatically when deployed to the cluster.
         </p>
       </div>
@@ -71,7 +79,7 @@ export default function App() {
             <p style={s.empty}>Loading...</p>
           ) : customApps.length === 0 ? (
             <p style={s.empty}>
-              No apps deployed yet. Copy a template from <code style={s.code}>application/templates/</code>,
+              No apps deployed yet. Copy a template from <code style={s.code}>templates/</code>,
               rename it, and push to main — it will appear here automatically.
             </p>
           ) : (
