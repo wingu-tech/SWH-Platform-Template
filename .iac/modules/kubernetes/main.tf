@@ -33,6 +33,20 @@ resource "kubernetes_namespace" "application" {
   }
 }
 
+# ── Platform Config ───────────────────────────────────────────────────────────
+# Exposes the client name to pods as an env var so the splash page can
+# display it without rebuilding the image per client.
+
+resource "kubernetes_config_map" "platform_config" {
+  metadata {
+    name      = "platform-config"
+    namespace = kubernetes_namespace.application.metadata[0].name
+  }
+  data = {
+    client_name = var.client_name
+  }
+}
+
 # ── RBAC — allow app pods to read Ingress resources ───────────────────────────
 # The splash page (sample-app1) reads Ingress resources to auto-discover
 # deployed apps and display them as navigation cards.
