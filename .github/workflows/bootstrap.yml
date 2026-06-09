@@ -13,11 +13,11 @@
 name: Bootstrap Infrastructure
 
 on:
-  push:
+  pull_request:
     branches:
       - main
-    paths:
-      - "terraform/**"
+    types:
+      - closed
   workflow_dispatch:
     inputs:
       destroy:
@@ -41,6 +41,7 @@ jobs:
   plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     outputs:
       tfplan_exitcode: ${{ steps.plan.outputs.exitcode }}
 
