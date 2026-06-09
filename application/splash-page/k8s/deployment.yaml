@@ -20,6 +20,12 @@ spec:
           image: public.ecr.aws/nginx/nginx:alpine
           ports:
             - containerPort: 5000
+          env:
+            - name: CLIENT_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: platform-config
+                  key: client_name
           readinessProbe:
             httpGet:
               path: /api/health
