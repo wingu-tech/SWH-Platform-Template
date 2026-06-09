@@ -5,8 +5,8 @@
 #
 # Stages:
 #   1. setup       — configure AWS credentials, Terraform, tools
-#   2. plan        — terraform plan, output posted as summary
-#   3. apply       — terraform apply (only on main branch merge)
+#   2. plan        — tofu plan, output posted as summary
+#   3. apply       — tofu apply (only on main branch merge)
 #   4. post        — store key outputs in SSM, comment on the merged PR
 # ---------------------------------------------------------------------------
 
@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       destroy:
-        description: "Set to 'true' to run terraform destroy instead (use with caution)"
+        description: "Set to 'true' to run tofu destroy instead (use with caution)"
         required: false
         default: "false"
 
@@ -31,7 +31,7 @@ permissions:
   pull-requests: write
 
 env:
-  TF_VERSION: "1.6.6"
+  OPENTOFU_VERSION: "1.8.0"
   WORKING_DIR: "./.iac"
   AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
   TF_STATE_LOCK_TABLE: ${{ secrets.TF_STATE_LOCK_TABLE || 'terraform-state-lock' }}
@@ -55,31 +55,31 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: GitHubActions-Bootstrap
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
         with:
-          terraform_version: ${{ env.TF_VERSION }}
+          tofu_version: ${{ env.OPENTOFU_VERSION }}
 
       - name: Terraform Init
         working-directory: ${{ env.WORKING_DIR }}
-        run: terraform init -input=false
+        run: tofu init -input=false
 
       - name: Terraform Format
         working-directory: ${{ env.WORKING_DIR }}
         # Auto-fix formatting rather than failing the deployment over whitespace.
         # validate.yml handles format checks on PRs where developer feedback matters.
-        run: terraform fmt -recursive
+        run: tofu fmt -recursive
 
       - name: Terraform Validate
         working-directory: ${{ env.WORKING_DIR }}
-        run: terraform validate
+        run: tofu validate
 
       - name: Terraform Plan
         id: plan
         working-directory: ${{ env.WORKING_DIR }}
         run: |
           set +e
-          terraform plan \
+          tofu plan \
             -input=false \
             -lock=false \
             -detailed-exitcode \
@@ -141,14 +141,14 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: GitHubActions-Apply
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
         with:
-          terraform_version: ${{ env.TF_VERSION }}
+          tofu_version: ${{ env.OPENTOFU_VERSION }}
 
       - name: Terraform Init
         working-directory: ${{ env.WORKING_DIR }}
-        run: terraform init -input=false
+        run: tofu init -input=false
 
       - name: Download Plan
         uses: actions/download-artifact@v4
@@ -169,7 +169,7 @@ jobs:
 
       - name: Terraform Apply
         working-directory: ${{ env.WORKING_DIR }}
-        run: terraform apply -input=false -auto-approve tfplan
+        run: tofu apply -input=false -auto-approve tfplan
 
       - name: Release State Lock on Failure
         if: failure()
@@ -188,10 +188,10 @@ jobs:
         id: tf_outputs
         working-directory: ${{ env.WORKING_DIR }}
         run: |
-          echo "client_name=$(terraform output -raw client_name)" >> $GITHUB_OUTPUT
-          echo "cluster_name=$(terraform output -raw eks_cluster_name)" >> $GITHUB_OUTPUT
-          echo "cluster_endpoint=$(terraform output -raw eks_cluster_endpoint)" >> $GITHUB_OUTPUT
-          echo "cicd_role_arn=$(terraform output -raw cicd_role_arn)" >> $GITHUB_OUTPUT
+          echo "client_name=$(tofu output -raw client_name)" >> $GITHUB_OUTPUT
+          echo "cluster_name=$(tofu output -raw eks_cluster_name)" >> $GITHUB_OUTPUT
+          echo "cluster_endpoint=$(tofu output -raw eks_cluster_endpoint)" >> $GITHUB_OUTPUT
+          echo "cicd_role_arn=$(tofu output -raw cicd_role_arn)" >> $GITHUB_OUTPUT
 
       - name: Store Cluster Endpoint in SSM
         run: |
@@ -219,8 +219,8 @@ jobs:
       - name: Bootstrap ArgoCD ApplicationSet
         working-directory: ${{ env.WORKING_DIR }}
         run: |
-          CLIENT=$(terraform output -raw client_name)
-          ENV=$(terraform output -raw environment 2>/dev/null || echo "dev")
+          CLIENT=$(tofu output -raw client_name)
+          ENV=$(tofu output -raw environment 2>/dev/null || echo "dev")
           NS=$(kubectl get configmap -n tooling -l "app.kubernetes.io/managed-by=terraform" \
             -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null || echo "tooling")
 
@@ -244,7 +244,7 @@ jobs:
       - name: Trigger initial app builds
         working-directory: ${{ env.WORKING_DIR }}
         run: |
-          CLIENT=$(terraform output -raw client_name)
+          CLIENT=$(tofu output -raw client_name)
           # Single-repo mode: app-deploy.yml lives in this same repo (platform repo)
           SOURCECODE_REPO="${{ github.repository }}"
 
@@ -312,14 +312,14 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: GitHubActions-Destroy
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
         with:
-          terraform_version: ${{ env.TF_VERSION }}
+          tofu_version: ${{ env.OPENTOFU_VERSION }}
 
       - name: Terraform Init
         working-directory: ${{ env.WORKING_DIR }}
-        run: terraform init -input=false
+        run: tofu init -input=false
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v4
@@ -473,10 +473,10 @@ jobs:
         # Destroy IRSA roles (AWS resources in kubernetes module) before removing
         # from state, then remove kubernetes provider resources to avoid v1alpha1 errors.
         run: |
-          terraform destroy -input=false -auto-approve -lock=false \
+          tofu destroy -input=false -auto-approve -lock=false \
             -target=module.kubernetes 2>/dev/null || true
-          for r in $(terraform state list 2>/dev/null | grep "module.kubernetes" | grep -v "data\."); do
-            terraform state rm "$r" 2>/dev/null && echo "Removed from state: $r" || true
+          for r in $(tofu state list 2>/dev/null | grep "module.kubernetes" | grep -v "data\."); do
+            tofu state rm "$r" 2>/dev/null && echo "Removed from state: $r" || true
           done
 
       - name: Terraform Destroy — EKS + Monitoring + Security
@@ -485,7 +485,7 @@ jobs:
         # k8s-traffic SGs are attached to node ENIs — they cannot be deleted while
         # nodes are running, which is why the pre-destroy SG cleanup always fails on them.
         run: |
-          terraform destroy -input=false -auto-approve -lock=false \
+          tofu destroy -input=false -auto-approve -lock=false \
             -target=module.monitoring \
             -target=module.security \
             -target=module.eks
@@ -515,14 +515,14 @@ jobs:
       - name: Terraform Destroy — VPC
         working-directory: ${{ env.WORKING_DIR }}
         run: |
-          terraform destroy -input=false -auto-approve -lock=false \
+          tofu destroy -input=false -auto-approve -lock=false \
             -target=module.vpc
 
       - name: Terraform Destroy — IAM (last)
         working-directory: ${{ env.WORKING_DIR }}
         # IAM is destroyed last so the CICD role survives long enough to save state.
         # After this step the session will be invalid — that's expected.
-        run: terraform destroy -input=false -auto-approve -lock=false -target=module.iam || true
+        run: tofu destroy -input=false -auto-approve -lock=false -target=module.iam || true
 
       - name: Post-Destroy — State bucket cleanup reminder
         if: always()
