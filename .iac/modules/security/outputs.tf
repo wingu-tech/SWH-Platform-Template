@@ -9,7 +9,3 @@ output "cloudtrail_name" {
 output "cloudtrail_bucket" {
   value = aws_s3_bucket.cloudtrail.bucket
 }
-
-output "config_recorder_name" {
-  value = var.create_account_security ? aws_config_configuration_recorder.main[0].name : ""
-}
