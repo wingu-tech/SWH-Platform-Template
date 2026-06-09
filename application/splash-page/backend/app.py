@@ -2,9 +2,13 @@ import os
 import requests
 from flask import Flask, jsonify, send_from_directory
 
-app = Flask(__name__, static_folder="static", static_url_path="")
+APP_PATH = os.environ.get("APP_PATH", "")
+CLIENT_NAME = os.environ.get("CLIENT_NAME", "Platform")
 
-@app.route("/")
+app = Flask(__name__, static_folder="static", static_url_path=APP_PATH)
+
+@app.route(f"{APP_PATH}")
+@app.route(f"{APP_PATH}/")
 def index():
     return send_from_directory(app.static_folder, "index.html")
 
@@ -16,17 +20,20 @@ def not_found(e):
 def health():
     return jsonify({"status": "ok"})
 
+@app.route("/api/config")
+def config():
+    return jsonify({"client_name": CLIENT_NAME})
+
 @app.route("/api/apps")
 def apps():
     """
     Reads Ingress resources from the application namespace via the
-    in-cluster Kubernetes API. Returns a list of deployed apps for
-    the splash page to render as navigation cards.
+    in-cluster Kubernetes API. Returns deployed apps for the splash page.
     """
     try:
         token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-        ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-        ns_path = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+        ca_path    = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+        ns_path    = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
 
         with open(token_path) as f:
             token = f.read().strip()
