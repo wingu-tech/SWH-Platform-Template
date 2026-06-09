@@ -12,19 +12,17 @@ locals {
 }
 
 # ── GitHub OIDC Provider ──────────────────────────────────────────────────────
-
-data "tls_certificate" "github_oidc" {
-  url = "https://token.actions.githubusercontent.com/.well-known/openid-configuration"
-}
+# Thumbprint is hardcoded — the dynamic tls_certificate data source makes an
+# outbound call to token.actions.githubusercontent.com which is blocked on
+# many corporate networks. AWS also maintains GitHub's root CA in their trust
+# store, making the thumbprint check largely redundant anyway.
 
 resource "aws_iam_openid_connect_provider" "github_actions" {
   url = "https://token.actions.githubusercontent.com"
 
   client_id_list = ["sts.amazonaws.com"]
 
-  thumbprint_list = [
-    data.tls_certificate.github_oidc.certificates[0].sha1_fingerprint
-  ]
+  thumbprint_list = [var.github_oidc_thumbprint]
 
   tags = {
     Name = "${local.name_prefix}-github-oidc"
