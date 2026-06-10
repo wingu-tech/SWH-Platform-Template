@@ -168,6 +168,18 @@ variable "eks_app_node_max_size" {
   default     = 3
 }
 
+variable "eks_admin_principal_arns" {
+  description = "IAM role/user ARNs that should get EKS cluster admin access for kubectl."
+  type        = list(string)
+  default     = []
+}
+
+variable "eks_sso_admin_role_name_regex" {
+  description = "Regex used to auto-authorize matching AWS SSO reserved IAM role names for EKS admin access."
+  type        = string
+  default     = "^AWSReservedSSO_CEEPRODTENTSB.*"
+}
+
 # ── IAM / GitHub OIDC ─────────────────────────────────────────────────────────
 
 variable "github_org" {

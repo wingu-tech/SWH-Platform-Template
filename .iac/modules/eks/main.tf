@@ -4,6 +4,32 @@
 # Uses terraform-aws-modules/eks for the heavy lifting.
 # ---------------------------------------------------------------------------
 
+locals {
+  dynamic_sso_admin_principal_arns = var.sso_admin_role_name_regex != "" ? try(data.aws_iam_roles.sso_admins[0].arns, []) : []
+  effective_admin_principal_arns   = distinct(concat(var.admin_principal_arns, local.dynamic_sso_admin_principal_arns))
+
+  admin_access_entries = {
+    for idx, principal_arn in local.effective_admin_principal_arns : "admin_${idx}" => {
+      kubernetes_groups = []
+      principal_arn     = principal_arn
+      policy_associations = {
+        admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+  }
+}
+
+data "aws_iam_roles" "sso_admins" {
+  count       = var.sso_admin_role_name_regex != "" ? 1 : 0
+  name_regex  = var.sso_admin_role_name_regex
+  path_prefix = "/aws-reserved/sso.amazonaws.com/"
+}
+
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.0"
@@ -116,7 +142,7 @@ module "eks" {
   # Cluster creator gets admin automatically — don't add a duplicate entry
   enable_cluster_creator_admin_permissions = false
 
-  access_entries = {
+  access_entries = merge({
     cicd = {
       kubernetes_groups = []
       principal_arn     = var.cicd_role_arn
@@ -129,7 +155,7 @@ module "eks" {
         }
       }
     }
-  }
+  }, local.admin_access_entries)
 
   tags = {
     Name = var.cluster_name

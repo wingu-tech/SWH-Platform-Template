@@ -110,6 +110,9 @@ resource "helm_release" "lbc" {
   chart      = "aws-load-balancer-controller"
   namespace  = "kube-system"
   version    = var.lbc_chart_version
+  wait       = true
+  timeout    = 900
+  atomic     = true
 
   set {
     name  = "clusterName"
@@ -207,6 +210,9 @@ resource "helm_release" "argocd" {
       }
     })
   ]
+
+  # Prevent LBC webhook races when other charts create Services/Ingresses.
+  depends_on = [helm_release.lbc]
 }
 
 # ── ArgoCD Repo Secret ────────────────────────────────────────────────────────
