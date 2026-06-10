@@ -5,7 +5,7 @@
 # ---------------------------------------------------------------------------
 
 locals {
-  dynamic_sso_admin_principal_arns = var.sso_admin_role_name_regex != "" ? try(data.aws_iam_roles.sso_admins[0].arns, []) : []
+  dynamic_sso_admin_principal_arns = var.sso_admin_role_name_regex != "" ? tolist(try(data.aws_iam_roles.sso_admins[0].arns, [])) : []
   effective_admin_principal_arns   = distinct(concat(var.admin_principal_arns, local.dynamic_sso_admin_principal_arns))
 
   admin_access_entries = {
