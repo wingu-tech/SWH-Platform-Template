@@ -145,6 +145,59 @@ resource "helm_release" "argocd" {
         service = {
           type = "ClusterIP"
         }
+        nodeSelector = {
+          workload = "tooling"
+        }
+        tolerations = [{
+          key      = "workload"
+          operator = "Equal"
+          value    = "tooling"
+          effect   = "NoSchedule"
+        }]
+      }
+      controller = {
+        nodeSelector = {
+          workload = "tooling"
+        }
+        tolerations = [{
+          key      = "workload"
+          operator = "Equal"
+          value    = "tooling"
+          effect   = "NoSchedule"
+        }]
+      }
+      repoServer = {
+        nodeSelector = {
+          workload = "tooling"
+        }
+        tolerations = [{
+          key      = "workload"
+          operator = "Equal"
+          value    = "tooling"
+          effect   = "NoSchedule"
+        }]
+      }
+      applicationSet = {
+        nodeSelector = {
+          workload = "tooling"
+        }
+        tolerations = [{
+          key      = "workload"
+          operator = "Equal"
+          value    = "tooling"
+          effect   = "NoSchedule"
+        }]
+      }
+      redis = {
+        nodeSelector = {
+          workload = "tooling"
+        }
+        tolerations = [{
+          key      = "workload"
+          operator = "Equal"
+          value    = "tooling"
+          effect   = "NoSchedule"
+        }]
       }
       configs = {
         params = {
@@ -366,6 +419,15 @@ resource "helm_release" "grafana" {
           "eks.amazonaws.com/role-arn" = module.grafana_irsa.iam_role_arn
         }
       }
+      nodeSelector = {
+        workload = "tooling"
+      }
+      tolerations = [{
+        key      = "workload"
+        operator = "Equal"
+        value    = "tooling"
+        effect   = "NoSchedule"
+      }]
 
       "grafana.ini" = {
         server = {

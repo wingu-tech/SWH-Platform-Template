@@ -32,7 +32,10 @@ module "eks" {
     }
   }
 
-  # Default managed node group
+  # Managed node groups:
+  # - default: untainted, receives cluster/system workloads by default
+  # - tooling: tainted for platform components (ArgoCD, Grafana, etc.)
+  # - app: tainted for application workloads that opt-in with tolerations
   eks_managed_node_groups = {
     default = {
       name           = "${var.cluster_name}-ng-default"
@@ -52,6 +55,60 @@ module "eks" {
 
       labels = {
         role = "default"
+      }
+    }
+
+    tooling = {
+      name           = "${var.cluster_name}-ng-tooling"
+      instance_types = var.node_instance_types
+      min_size       = var.tooling_node_min_size
+      max_size       = var.tooling_node_max_size
+      desired_size   = var.tooling_node_desired_size
+
+      iam_role_name            = "${var.cluster_name}-nodes-tooling"
+      iam_role_use_name_prefix = false
+
+      ami_type                       = "AL2_x86_64"
+      use_latest_ami_release_version = true
+
+      labels = {
+        role     = "tooling"
+        workload = "tooling"
+      }
+
+      taints = {
+        workload = {
+          key    = "workload"
+          value  = "tooling"
+          effect = "NO_SCHEDULE"
+        }
+      }
+    }
+
+    app = {
+      name           = "${var.cluster_name}-ng-app"
+      instance_types = var.node_instance_types
+      min_size       = var.app_node_min_size
+      max_size       = var.app_node_max_size
+      desired_size   = var.app_node_desired_size
+
+      iam_role_name            = "${var.cluster_name}-nodes-app"
+      iam_role_use_name_prefix = false
+
+      ami_type                       = "AL2_x86_64"
+      use_latest_ami_release_version = true
+
+      labels = {
+        role     = "app"
+        workload = "app"
+      }
+
+      taints = {
+        workload = {
+          key    = "workload"
+          value  = "app"
+          effect = "NO_SCHEDULE"
+        }
       }
     }
   }

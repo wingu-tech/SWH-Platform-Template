@@ -46,19 +46,25 @@ module "eks" {
   count  = var.create_eks ? 1 : 0
   source = "./modules/eks"
 
-  client_name         = var.client_name
-  environment         = var.environment
-  cluster_name        = local.cluster_name
-  cluster_version     = var.eks_cluster_version
-  vpc_id              = local.vpc_id
-  private_subnet_ids  = local.private_subnet_ids
-  node_instance_types = var.eks_node_instance_types
-  node_desired_size   = var.eks_node_desired_size
-  node_min_size       = var.eks_node_min_size
-  node_max_size       = var.eks_node_max_size
+  client_name               = var.client_name
+  environment               = var.environment
+  cluster_name              = local.cluster_name
+  cluster_version           = var.eks_cluster_version
+  vpc_id                    = local.vpc_id
+  private_subnet_ids        = local.private_subnet_ids
+  node_instance_types       = var.eks_node_instance_types
+  node_desired_size         = var.eks_node_desired_size
+  node_min_size             = var.eks_node_min_size
+  node_max_size             = var.eks_node_max_size
+  tooling_node_desired_size = var.eks_tooling_node_desired_size
+  tooling_node_min_size     = var.eks_tooling_node_min_size
+  tooling_node_max_size     = var.eks_tooling_node_max_size
+  app_node_desired_size     = var.eks_app_node_desired_size
+  app_node_min_size         = var.eks_app_node_min_size
+  app_node_max_size         = var.eks_app_node_max_size
 
   # Pass the cicd role ARN so it's added to aws-auth from the start
-  cicd_role_arn  = var.create_iam ? module.iam[0].cicd_role_arn : ""
+  cicd_role_arn = var.create_iam ? module.iam[0].cicd_role_arn : ""
 
   depends_on = [module.vpc, module.iam]
 }

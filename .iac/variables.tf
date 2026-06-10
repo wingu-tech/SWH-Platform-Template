@@ -132,6 +132,42 @@ variable "eks_node_max_size" {
   default     = 4
 }
 
+variable "eks_tooling_node_desired_size" {
+  description = "Desired number of tooling nodes (tainted workload=tooling)."
+  type        = number
+  default     = 1
+}
+
+variable "eks_tooling_node_min_size" {
+  description = "Minimum number of tooling nodes."
+  type        = number
+  default     = 1
+}
+
+variable "eks_tooling_node_max_size" {
+  description = "Maximum number of tooling nodes."
+  type        = number
+  default     = 2
+}
+
+variable "eks_app_node_desired_size" {
+  description = "Desired number of app nodes (tainted workload=app)."
+  type        = number
+  default     = 1
+}
+
+variable "eks_app_node_min_size" {
+  description = "Minimum number of app nodes."
+  type        = number
+  default     = 1
+}
+
+variable "eks_app_node_max_size" {
+  description = "Maximum number of app nodes."
+  type        = number
+  default     = 3
+}
+
 # ── IAM / GitHub OIDC ─────────────────────────────────────────────────────────
 
 variable "github_org" {
