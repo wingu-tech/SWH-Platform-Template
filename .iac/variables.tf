@@ -168,6 +168,12 @@ variable "eks_app_node_max_size" {
   default     = 3
 }
 
+variable "eks_admin_principal_arns" {
+  description = "IAM principal ARNs that should receive EKS cluster-admin access entries."
+  type        = list(string)
+  default     = []
+}
+
 # ── IAM / GitHub OIDC ─────────────────────────────────────────────────────────
 
 variable "github_org" {
