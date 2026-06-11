@@ -513,6 +513,67 @@ jobs:
               echo "  Could not delete $SG_ID"
           done
 
+      - name: Pre-VPC — Delete VPC endpoints and wait for ENIs
+        working-directory: ${{ env.WORKING_DIR }}
+        # Interface endpoint ENIs can block subnet deletion. Remove endpoints first.
+        run: |
+          set -euo pipefail
+
+          VPC_ID=$(tofu output -raw vpc_id 2>/dev/null || echo "")
+          if [[ -z "$VPC_ID" || "$VPC_ID" == "None" ]]; then
+            echo "No VPC ID from terraform output — skipping endpoint cleanup"
+            exit 0
+          fi
+          echo "Checking VPC endpoints in $VPC_ID..."
+
+          ENDPOINT_IDS=$(aws ec2 describe-vpc-endpoints \
+            --filters "Name=vpc-id,Values=${VPC_ID}" \
+            --query 'VpcEndpoints[].VpcEndpointId' \
+            --output text \
+            --region ${{ env.AWS_REGION }} 2>/dev/null || true)
+
+          if [[ -z "$ENDPOINT_IDS" || "$ENDPOINT_IDS" == "None" ]]; then
+            echo "No VPC endpoints found"
+          else
+            echo "Deleting VPC endpoints: $ENDPOINT_IDS"
+            aws ec2 delete-vpc-endpoints \
+              --vpc-endpoint-ids $ENDPOINT_IDS \
+              --region ${{ env.AWS_REGION }} >/dev/null
+          fi
+
+          echo "Waiting for VPC endpoints to be fully deleted..."
+          for i in $(seq 1 40); do
+            REMAINING=$(aws ec2 describe-vpc-endpoints \
+              --filters "Name=vpc-id,Values=${VPC_ID}" \
+              --query 'length(VpcEndpoints)' \
+              --output text \
+              --region ${{ env.AWS_REGION }} 2>/dev/null || echo 0)
+            [[ "$REMAINING" == "None" ]] && REMAINING=0
+            if [[ "$REMAINING" == "0" ]]; then
+              echo "All VPC endpoints removed after $((i * 15))s"
+              break
+            fi
+            echo "  Still waiting: ${REMAINING} endpoints remain (${i}/40)"
+            sleep 15
+          done
+
+          echo "Waiting for endpoint-owned ENIs to clear..."
+          for i in $(seq 1 40); do
+            EP_ENIS=$(aws ec2 describe-network-interfaces \
+              --filters "Name=vpc-id,Values=${VPC_ID}" \
+                        "Name=requester-managed,Values=true" \
+              --query 'length(NetworkInterfaces[?contains(Description, `VPC Endpoint`) || InterfaceType==`vpc_endpoint`])' \
+              --output text \
+              --region ${{ env.AWS_REGION }} 2>/dev/null || echo 0)
+            [[ "$EP_ENIS" == "None" ]] && EP_ENIS=0
+            if [[ "$EP_ENIS" == "0" ]]; then
+              echo "No endpoint ENIs remain after $((i * 15))s"
+              break
+            fi
+            echo "  Endpoint ENIs still present: ${EP_ENIS} (${i}/40)"
+            sleep 15
+          done
+
       - name: Terraform Destroy — VPC
         working-directory: ${{ env.WORKING_DIR }}
         run: |
