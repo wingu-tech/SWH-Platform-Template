@@ -62,8 +62,6 @@ module "eks" {
   app_node_desired_size     = var.eks_app_node_desired_size
   app_node_min_size         = var.eks_app_node_min_size
   app_node_max_size         = var.eks_app_node_max_size
-  admin_principal_arns      = var.eks_admin_principal_arns
-  sso_admin_role_name_regex = var.eks_sso_admin_role_name_regex
 
   # Pass the cicd role ARN so it's added to aws-auth from the start
   cicd_role_arn = var.create_iam ? module.iam[0].cicd_role_arn : ""
