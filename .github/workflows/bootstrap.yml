@@ -214,27 +214,6 @@ jobs:
             --name ${{ steps.tf_outputs.outputs.cluster_name }} \
             --region ${{ env.AWS_REGION }}
 
-      - name: Grant SSO role cluster admin via aws-auth
-        run: |
-          set -euo pipefail
-
-          ROLE_ARN="arn:aws:iam::256688076722:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_CEEPRODTENTSB_IsbUsersPS_a9e3f54046af8b44"
-
-          CURRENT_MAP_ROLES="$(kubectl -n kube-system get configmap aws-auth -o jsonpath='{.data.mapRoles}')"
-          if echo "$CURRENT_MAP_ROLES" | grep -q "$ROLE_ARN"; then
-            echo "aws-auth already contains $ROLE_ARN"
-            exit 0
-          fi
-
-          NEW_MAP_ROLES="${CURRENT_MAP_ROLES}"$'\n'"- rolearn: ${ROLE_ARN}"$'\n'"  username: sso-user:{{SessionName}}"$'\n'"  groups:"$'\n'"    - system:masters"
-
-          kubectl -n kube-system patch configmap aws-auth \
-            --type merge \
-            -p "$(jq -n --arg mr "$NEW_MAP_ROLES" '{data:{mapRoles:$mr}}')"
-
-          kubectl -n kube-system get configmap aws-auth -o jsonpath='{.data.mapRoles}' | grep "$ROLE_ARN"
-          echo "aws-auth mapping applied successfully"
-
       - name: Verify Cluster Access
         run: kubectl get nodes
 
