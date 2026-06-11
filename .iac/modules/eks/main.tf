@@ -4,6 +4,23 @@
 # Uses terraform-aws-modules/eks for the heavy lifting.
 # ---------------------------------------------------------------------------
 
+locals {
+  admin_access_entries = {
+    for idx, principal_arn in var.admin_principal_arns : "admin_${idx}" => {
+      kubernetes_groups = []
+      principal_arn     = principal_arn
+      policy_associations = {
+        admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+  }
+}
+
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.0"
@@ -116,7 +133,7 @@ module "eks" {
   # Cluster creator gets admin automatically — don't add a duplicate entry
   enable_cluster_creator_admin_permissions = false
 
-  access_entries = {
+  access_entries = merge({
     cicd = {
       kubernetes_groups = []
       principal_arn     = var.cicd_role_arn
@@ -129,7 +146,7 @@ module "eks" {
         }
       }
     }
-  }
+  }, local.admin_access_entries)
 
   tags = {
     Name = var.cluster_name
