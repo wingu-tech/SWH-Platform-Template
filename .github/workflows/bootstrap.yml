@@ -574,6 +574,41 @@ jobs:
             sleep 15
           done
 
+      - name: Pre-VPC — Delete remaining non-default security groups
+        working-directory: ${{ env.WORKING_DIR }}
+        # Some managed services can leave SGs behind and block VPC deletion.
+        run: |
+          set -euo pipefail
+
+          VPC_ID=$(tofu output -raw vpc_id 2>/dev/null || echo "")
+          if [[ -z "$VPC_ID" || "$VPC_ID" == "None" ]]; then
+            echo "No VPC ID from terraform output — skipping SG cleanup"
+            exit 0
+          fi
+
+          for attempt in 1 2 3 4 5; do
+            SG_IDS=$(aws ec2 describe-security-groups \
+              --filters "Name=vpc-id,Values=${VPC_ID}" \
+              --query 'SecurityGroups[?GroupName!=`default`].GroupId' \
+              --output text \
+              --region ${{ env.AWS_REGION }} 2>/dev/null || true)
+
+            if [[ -z "$SG_IDS" || "$SG_IDS" == "None" ]]; then
+              echo "No non-default SGs remain in VPC ${VPC_ID}"
+              break
+            fi
+
+            echo "Attempt ${attempt}: deleting SGs: ${SG_IDS}"
+            for SG_ID in $SG_IDS; do
+              aws ec2 delete-security-group \
+                --group-id "$SG_ID" \
+                --region ${{ env.AWS_REGION }} 2>/dev/null \
+                && echo "  Deleted SG: $SG_ID" \
+                || echo "  Could not delete yet: $SG_ID"
+            done
+            sleep 15
+          done
+
       - name: Terraform Destroy — VPC
         working-directory: ${{ env.WORKING_DIR }}
         run: |
