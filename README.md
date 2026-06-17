@@ -29,10 +29,48 @@ unzip awscliv2.zip && sudo ./aws/install
 
 Verify: `aws --version`
 
-Configure AWS SSO for the account/permission set you use for this environment:
+Configure AWS SSO for the account/permission set you use for this environment.
 
 ```bash
 aws configure sso
+```
+
+You will be prompted for:
+
+```
+SSO session name (recommended): swh-platform
+SSO start URL:                  https://<your-org>.awsapps.com/start
+SSO region:                     us-east-1
+SSO registration scopes:        sso:account:access
+```
+
+A browser window opens — log in and grant access. Then select the account and permission set
+(choose the one with AdministratorAccess). Back in the terminal:
+
+```
+CLI default client Region:  us-east-1
+CLI default output format:  json
+CLI profile name:           swh-platform-admin
+```
+
+> Use a descriptive profile name like `swh-platform-admin`.
+
+Log in before each session (SSO tokens expire, typically every 8 hours):
+
+```bash
+aws sso login --profile swh-platform-admin
+```
+
+Set the profile for your shell session so AWS CLI and helpers use it automatically:
+
+```bash
+export AWS_PROFILE=swh-platform-admin
+```
+
+Verify:
+
+```bash
+aws sts get-caller-identity
 ```
 
 ---
