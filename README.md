@@ -45,10 +45,16 @@ You will be prompted for:
 
 ```
 SSO session name (recommended): swh-platform
-SSO start URL:                  https://<your-org>.awsapps.com/start
+SSO start URL:                  use the URL shown in AWS Access Keys
 SSO region:                     us-east-1
 SSO registration scopes:        sso:account:access
 ```
+
+To find your exact SSO Start URL for these accounts:
+
+1. Open `https://tentsandbox.awsapps.com/start`
+2. Select the **Access keys** icon
+3. Copy the **SSO Start URL** shown there and use it in `aws configure sso`
 
 A browser window opens — log in and grant access. Then select the account and permission set
 (choose the one with AdministratorAccess). Back in the terminal:
