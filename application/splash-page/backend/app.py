@@ -2,7 +2,7 @@ import os
 import requests
 from flask import Flask, jsonify, send_from_directory
 
-APP_PATH = os.environ.get("APP_PATH", "")
+APP_PATH = os.environ.get("APP_PATH", "/")
 CLIENT_NAME = os.environ.get("CLIENT_NAME", "Platform")
 
 app = Flask(__name__, static_folder="static", static_url_path=APP_PATH)

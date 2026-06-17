@@ -119,7 +119,12 @@ jobs:
           TAG=$(date -u +"%m%d%Y%H%M")
           APP_DIR="application/${{ matrix.app }}"
           IMAGE="${{ steps.ecr.outputs.repo }}:$TAG"
-          docker build --build-arg APP_PATH="/${{ matrix.app }}" -t "$IMAGE" "$APP_DIR"
+          if [[ "${{ matrix.app }}" == "splash-page" ]]; then
+            APP_PATH_ARG="/"
+          else
+            APP_PATH_ARG="/${{ matrix.app }}"
+          fi
+          docker build --build-arg APP_PATH="$APP_PATH_ARG" -t "$IMAGE" "$APP_DIR"
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
           echo "TAG=$TAG" >> $GITHUB_ENV
 
