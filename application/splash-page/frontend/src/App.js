@@ -11,15 +11,15 @@ function buildPlatformServices(clientName) {
       path: 'https://tentsandbox.awsapps.com/start',
       description: `AWS account for all ${normalizedClient || '<clientname>'} services.`,
       color: '#1f6feb',
-      badge: 'must be logged in first',
+      badge: 'AWS Sandbox',
       external: true,
     },
     {
       name: 'CloudWatch Dashboard',
       path: `https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards/dashboard/${dashboardName}`,
-      description: 'KES metrics within AWS.',
+      description: 'EKS metrics within AWS.',
       color: '#7c4dff',
-      badge: 'AWS Sandbox',
+      badge: 'must be logged in first',
       external: true,
     },
   ];
