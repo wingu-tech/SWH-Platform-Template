@@ -8,7 +8,8 @@
 # ---------------------------------------------------------------------------
 
 locals {
-  name_prefix = "${var.client_name}-${var.environment}"
+  name_prefix                 = "${var.client_name}-${var.environment}"
+  create_self_signed_alb_cert = var.existing_alb_certificate_arn == "" && var.create_self_signed_alb_certificate
 }
 
 # ── GuardDuty ─────────────────────────────────────────────────────────────────
@@ -162,4 +163,52 @@ resource "aws_ssm_parameter" "aws_account_id" {
   name  = "/${var.client_name}/infra/aws_account_id"
   type  = "String"
   value = var.aws_account_id
+}
+
+# ── ALB HTTPS Certificate (self-signed fallback for test environments) ───────
+
+resource "tls_private_key" "alb_https" {
+  count     = local.create_self_signed_alb_cert ? 1 : 0
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+resource "tls_self_signed_cert" "alb_https" {
+  count           = local.create_self_signed_alb_cert ? 1 : 0
+  private_key_pem = tls_private_key.alb_https[0].private_key_pem
+
+  subject {
+    common_name  = var.self_signed_alb_cert_common_name
+    organization = "SWH Platform"
+  }
+
+  dns_names = [var.self_signed_alb_cert_common_name]
+
+  validity_period_hours = 24 * 365
+  allowed_uses = [
+    "key_encipherment",
+    "digital_signature",
+    "server_auth",
+  ]
+}
+
+resource "aws_acm_certificate" "alb_https_imported" {
+  count             = local.create_self_signed_alb_cert ? 1 : 0
+  private_key       = tls_private_key.alb_https[0].private_key_pem
+  certificate_body  = tls_self_signed_cert.alb_https[0].cert_pem
+  certificate_chain = tls_self_signed_cert.alb_https[0].cert_pem
+
+  tags = {
+    Name = "${local.name_prefix}-alb-self-signed"
+  }
+}
+
+locals {
+  alb_certificate_arn = var.existing_alb_certificate_arn != "" ? var.existing_alb_certificate_arn : try(aws_acm_certificate.alb_https_imported[0].arn, "")
+}
+
+resource "aws_ssm_parameter" "alb_certificate_arn" {
+  name  = "/${var.client_name}/infra/alb_certificate_arn"
+  type  = "String"
+  value = local.alb_certificate_arn
 }

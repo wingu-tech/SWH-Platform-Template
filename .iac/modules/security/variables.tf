@@ -13,3 +13,21 @@ variable "create_account_security" {
   type        = bool
   default     = true
 }
+
+variable "existing_alb_certificate_arn" {
+  description = "Existing ACM certificate ARN for ALB HTTPS. If empty and create_self_signed_alb_certificate=true, a self-signed cert is generated/imported."
+  type        = string
+  default     = ""
+}
+
+variable "create_self_signed_alb_certificate" {
+  description = "Generate and import a self-signed ACM certificate when no existing ALB cert ARN is provided."
+  type        = bool
+  default     = true
+}
+
+variable "self_signed_alb_cert_common_name" {
+  description = "Common Name/SAN used for the generated self-signed ACM certificate."
+  type        = string
+  default     = "localhost"
+}

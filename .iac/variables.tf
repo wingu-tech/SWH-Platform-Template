@@ -206,6 +206,18 @@ variable "grafana_github_oauth_ssm_path" {
   default     = ""
 }
 
+variable "alb_certificate_arn" {
+  description = "ACM certificate ARN for HTTPS on the shared ALB. Leave empty to auto-generate self-signed when enabled."
+  type        = string
+  default     = ""
+}
+
+variable "create_self_signed_alb_certificate" {
+  description = "When true and alb_certificate_arn is empty, generate and import a self-signed ACM cert for ALB HTTPS."
+  type        = bool
+  default     = true
+}
+
 # ── State Backend ─────────────────────────────────────────────────────────────
 
 variable "tf_state_bucket" {

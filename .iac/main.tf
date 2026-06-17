@@ -9,7 +9,9 @@ locals {
   private_subnet_ids = var.create_vpc ? module.vpc[0].private_subnet_ids : var.existing_private_subnet_ids
   public_subnet_ids  = var.create_vpc ? module.vpc[0].public_subnet_ids : var.existing_public_subnet_ids
 
-  cluster_name = "${var.client_name}-eks-${var.environment}"
+  cluster_name                = "${var.client_name}-eks-${var.environment}"
+  default_self_signed_cert_cn = var.client_domain != "" ? var.client_domain : "${var.client_name}-${var.environment}.local"
+  alb_certificate_arn         = var.alb_certificate_arn != "" ? var.alb_certificate_arn : (var.create_security ? module.security[0].alb_certificate_arn : "")
 }
 
 # ── VPC ───────────────────────────────────────────────────────────────────────
@@ -92,12 +94,15 @@ module "security" {
   count  = var.create_security ? 1 : 0
   source = "./modules/security"
 
-  client_name             = var.client_name
-  environment             = var.environment
-  aws_account_id          = var.aws_account_id
-  aws_region              = var.aws_region
-  tf_state_bucket         = var.tf_state_bucket
-  create_account_security = var.create_account_security
+  client_name                        = var.client_name
+  environment                        = var.environment
+  aws_account_id                     = var.aws_account_id
+  aws_region                         = var.aws_region
+  tf_state_bucket                    = var.tf_state_bucket
+  create_account_security            = var.create_account_security
+  existing_alb_certificate_arn       = var.alb_certificate_arn
+  create_self_signed_alb_certificate = var.create_self_signed_alb_certificate
+  self_signed_alb_cert_common_name   = local.default_self_signed_cert_cn
 }
 
 # ── Kubernetes (namespaces + ArgoCD + ApplicationSet) ─────────────────────────
@@ -118,6 +123,7 @@ module "kubernetes" {
 
   grafana_admin_password_ssm_path = "/${var.client_name}/grafana/admin_password"
   grafana_github_oauth_ssm_path   = var.grafana_github_oauth_ssm_path
+  alb_certificate_arn             = local.alb_certificate_arn
 
   depends_on = [module.eks]
 }

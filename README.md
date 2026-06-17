@@ -29,10 +29,10 @@ unzip awscliv2.zip && sudo ./aws/install
 
 Verify: `aws --version`
 
-Configure with credentials that can assume the developer role in this account:
+Configure AWS SSO for the account/permission set you use for this environment:
 
 ```bash
-aws configure
+aws configure sso
 ```
 
 ---
@@ -57,8 +57,7 @@ Connect to the cluster (run once, or after credentials expire):
 ```bash
 aws eks update-kubeconfig \
   --name {{CLIENT_NAME}}-eks-dev \
-  --region us-east-1 \
-  --role-arn arn:aws:iam::<account-id>:role/{{CLIENT_NAME}}-dev-developer-role
+  --region us-east-1
 ```
 
 ---
@@ -76,21 +75,22 @@ sudo yum install git           # RHEL/Amazon Linux
 
 ---
 
-### Docker
+### Docker or Podman
 
 Required to build and test application images locally before pushing.
 
 ```bash
-# macOS — install Docker Desktop
-# https://www.docker.com/products/docker-desktop/
+# macOS — install Docker Desktop or Podman Desktop
+# Docker: https://www.docker.com/products/docker-desktop/
+# Podman: https://podman-desktop.io/
 
 # Linux
-sudo apt-get install docker.io    # Debian/Ubuntu
-sudo systemctl enable --now docker
-sudo usermod -aG docker $USER     # log out and back in after this
+sudo apt-get install docker.io    # Debian/Ubuntu (Docker)
+# or:
+sudo apt-get install podman       # Debian/Ubuntu (Podman)
 ```
 
-Verify: `docker --version`
+Verify: `docker --version` or `podman --version`
 
 ---
 

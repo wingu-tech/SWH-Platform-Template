@@ -151,6 +151,23 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
         run: tofu init -input=false
 
+      - name: Migrate off managed self-signed cert state
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          set -euo pipefail
+          if grep -Eq '^[[:space:]]*alb_certificate_arn[[:space:]]*=[[:space:]]*".+"' terraform.tfvars \
+            && grep -Eq '^[[:space:]]*create_self_signed_alb_certificate[[:space:]]*=[[:space:]]*false' terraform.tfvars; then
+            echo "External ALB cert configured — removing legacy self-signed cert resources from state"
+            for r in \
+              module.security[0].aws_acm_certificate.alb_https_imported[0] \
+              module.security[0].tls_private_key.alb_https[0] \
+              module.security[0].tls_self_signed_cert.alb_https[0]; do
+              tofu state rm "$r" 2>/dev/null && echo "Removed state: $r" || true
+            done
+          else
+            echo "Self-signed cert migration not needed"
+          fi
+
       - name: Download Plan
         uses: actions/download-artifact@v4
         with:

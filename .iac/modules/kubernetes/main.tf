@@ -11,6 +11,14 @@
 locals {
   name_prefix    = "${var.client_name}-${var.environment}"
   sourcecode_url = "https://github.com/${var.github_org}/${var.github_platform_repo}.git"
+  tls_ingress_annotations = var.alb_certificate_arn != "" ? {
+    "alb.ingress.kubernetes.io/listen-ports"     = "[{\"HTTP\": 80}, {\"HTTPS\": 443}]"
+    "alb.ingress.kubernetes.io/certificate-arn"  = var.alb_certificate_arn
+    "alb.ingress.kubernetes.io/ssl-redirect"     = "443"
+    "alb.ingress.kubernetes.io/backend-protocol" = "HTTP"
+    } : {
+    "alb.ingress.kubernetes.io/listen-ports" = "[{\"HTTP\": 80}]"
+  }
 }
 
 # ── Namespaces ────────────────────────────────────────────────────────────────
@@ -341,17 +349,16 @@ resource "kubernetes_ingress_v1" "argocd" {
   metadata {
     name      = "argocd"
     namespace = kubernetes_namespace.tooling.metadata[0].name
-    annotations = {
+    annotations = merge({
       "kubernetes.io/ingress.class"                = "alb"
       "alb.ingress.kubernetes.io/scheme"           = "internet-facing"
       "alb.ingress.kubernetes.io/target-type"      = "ip"
       "alb.ingress.kubernetes.io/group.name"       = var.ingress_group_name
-      "alb.ingress.kubernetes.io/listen-ports"     = "[{\"HTTP\": 80}]"
       "alb.ingress.kubernetes.io/healthcheck-path" = "/argocd/healthz"
       "alb.ingress.kubernetes.io/success-codes"    = "200"
       # Low group.order = high priority — specific paths matched before the app catch-all
       "alb.ingress.kubernetes.io/group.order" = "10"
-    }
+    }, local.tls_ingress_annotations)
   }
 
   spec {
@@ -514,16 +521,15 @@ resource "kubernetes_ingress_v1" "grafana" {
   metadata {
     name      = "grafana"
     namespace = kubernetes_namespace.tooling.metadata[0].name
-    annotations = {
+    annotations = merge({
       "kubernetes.io/ingress.class"                = "alb"
       "alb.ingress.kubernetes.io/scheme"           = "internet-facing"
       "alb.ingress.kubernetes.io/target-type"      = "ip"
       "alb.ingress.kubernetes.io/group.name"       = var.ingress_group_name
-      "alb.ingress.kubernetes.io/listen-ports"     = "[{\"HTTP\": 80}]"
-      "alb.ingress.kubernetes.io/healthcheck-path" = "/healthz"
+      "alb.ingress.kubernetes.io/healthcheck-path" = "/api/health"
       "alb.ingress.kubernetes.io/success-codes"    = "200"
       "alb.ingress.kubernetes.io/group.order"      = "20"
-    }
+    }, local.tls_ingress_annotations)
   }
 
   spec {

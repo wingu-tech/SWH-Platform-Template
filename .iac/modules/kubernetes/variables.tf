@@ -51,6 +51,12 @@ variable "ingress_group_name" {
   default     = "shared"
 }
 
+variable "alb_certificate_arn" {
+  description = "ACM certificate ARN used to enable HTTPS on shared ALB ingresses. Empty keeps HTTP-only."
+  type        = string
+  default     = ""
+}
+
 # ── Grafana ───────────────────────────────────────────────────────────────────
 
 variable "grafana_chart_version" {
