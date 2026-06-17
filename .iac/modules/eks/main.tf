@@ -5,6 +5,10 @@
 # ---------------------------------------------------------------------------
 
 locals {
+  node_role_additional_policies = {
+    cloudwatch_agent = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+    xray_daemon      = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+  }
   admin_access_entries = {
     for idx, principal_arn in var.admin_principal_arns : "admin_${idx}" => {
       kubernetes_groups = []
@@ -65,6 +69,7 @@ module "eks" {
       # the cluster name is long (EKS module appends "-eks-node-group-")
       iam_role_name            = "${var.cluster_name}-nodes"
       iam_role_use_name_prefix = false
+      iam_role_additional_policies = local.node_role_additional_policies
 
       # ami_type must be set when use_latest_ami_release_version = true
       ami_type                       = "AL2_x86_64"
@@ -84,6 +89,7 @@ module "eks" {
 
       iam_role_name            = "${var.cluster_name}-nodes-tooling"
       iam_role_use_name_prefix = false
+      iam_role_additional_policies = local.node_role_additional_policies
 
       ami_type                       = "AL2_x86_64"
       use_latest_ami_release_version = true
@@ -111,6 +117,7 @@ module "eks" {
 
       iam_role_name            = "${var.cluster_name}-nodes-app"
       iam_role_use_name_prefix = false
+      iam_role_additional_policies = local.node_role_additional_policies
 
       ami_type                       = "AL2_x86_64"
       use_latest_ami_release_version = true

@@ -1,9 +1,29 @@
 import React, { useState, useEffect } from 'react';
 
-const PLATFORM_SERVICES = [
-  { name: 'ArgoCD', path: '/argocd', description: 'GitOps deployment dashboard — sync status, rollback history, live resource state.', color: '#e14038' },
-  { name: 'Grafana', path: '/grafana', description: 'EKS metrics and Container Insights — node CPU, memory, pod health, dashboards.', color: '#f46800' },
-];
+function buildPlatformServices(clientName) {
+  const normalizedClient = (clientName || '').trim();
+  const dashboardName = normalizedClient ? `${normalizedClient}-dev-overview` : '<clientname>-dev-overview';
+  return [
+    { name: 'ArgoCD', path: '/argocd', description: 'GitOps deployment dashboard — sync status, rollback history, live resource state.', color: '#e14038' },
+    { name: 'Grafana', path: '/grafana', description: 'EKS metrics and Container Insights — node CPU, memory, pod health, dashboards.', color: '#f46800' },
+    {
+      name: 'AWS Account',
+      path: 'https://tentsandbox.awsapps.com/start',
+      description: `AWS account for all ${normalizedClient || '<clientname>'} services.`,
+      color: '#1f6feb',
+      badge: 'must be logged in first',
+      external: true,
+    },
+    {
+      name: 'CloudWatch Dashboard',
+      path: `https://us-east-1.console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards/dashboard/${dashboardName}`,
+      description: 'KES metrics within AWS.',
+      color: '#7c4dff',
+      badge: 'AWS Sandbox',
+      external: true,
+    },
+  ];
+}
 
 const s = {
   page: { fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', minHeight: '100vh', backgroundColor: '#f8f9fa', margin: 0, padding: 0 },
@@ -40,6 +60,7 @@ export default function App() {
   }, []);
 
   const title = clientName ? `${clientName} Home Dashboard` : 'Platform Home Dashboard';
+  const platformServices = buildPlatformServices(clientName);
 
   return (
     <div style={s.page}>
@@ -56,11 +77,17 @@ export default function App() {
         <div style={s.section}>
           <h2 style={s.sectionTitle}>Platform Services</h2>
           <div style={s.grid}>
-            {PLATFORM_SERVICES.map(svc => (
-              <a key={svc.name} href={svc.path} style={{ ...s.card, borderTopColor: svc.color }}>
+            {platformServices.map(svc => (
+              <a
+                key={svc.name}
+                href={svc.path}
+                style={{ ...s.card, borderTopColor: svc.color }}
+                target={svc.external ? '_blank' : undefined}
+                rel={svc.external ? 'noreferrer' : undefined}
+              >
                 <div style={s.cardName}>{svc.name}</div>
                 <div style={s.cardDesc}>{svc.description}</div>
-                <span style={s.badge}>{svc.path}</span>
+                <span style={s.badge}>{svc.badge || svc.path}</span>
               </a>
             ))}
           </div>
