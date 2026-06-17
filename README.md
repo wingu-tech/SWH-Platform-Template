@@ -10,13 +10,11 @@ This single repository contains everything for the **{{CLIENT_NAME}}** environme
 
 ---
 
-## Developer Prerequisites
+## Machine Prerequisites
 
-Install the following tools before working with this repository.
+Install all of the following on the machine you'll run the scripts from.
 
-### AWS CLI v2
-
-Required to authenticate to AWS and get cluster credentials.
+### 1. AWS CLI v2
 
 ```bash
 # macOS
@@ -27,9 +25,17 @@ curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
 unzip awscliv2.zip && sudo ./aws/install
 ```
 
-Verify: `aws --version`
+Verify: `aws --version` → should show `aws-cli/2.x`
 
-Configure AWS SSO for the account/permission set you use for this environment.
+The IAM user or role you configure needs **AdministratorAccess** (or at minimum: IAM, S3,
+DynamoDB, SSM, EKS, EC2, VPC full access) — the local bootstrap creates the OIDC provider
+and IAM roles that GitHub Actions will use for all subsequent applies.
+
+Use AWS SSO (recommended for org accounts):
+
+If your organization uses AWS IAM Identity Center (SSO), use this instead of static keys.
+
+**1. Configure the SSO profile (one-time setup)**
 
 ```bash
 aws configure sso
@@ -53,31 +59,103 @@ CLI default output format:  json
 CLI profile name:           swh-platform-admin
 ```
 
-> Use a descriptive profile name like `swh-platform-admin`.
+> Use a descriptive profile name like `swh-platform-admin`. You will reference it in every session.
 
-Log in before each session (SSO tokens expire, typically every 8 hours):
+**2. Log in before each session**
+
+SSO tokens expire (typically every 8 hours). Run this at the start of each working session:
 
 ```bash
 aws sso login --profile swh-platform-admin
 ```
 
-Set the profile for your shell session so AWS CLI and helpers use it automatically:
+**3. Set the profile for the current session**
+
+Export it so all AWS CLI commands and the Python scripts pick it up automatically:
 
 ```bash
 export AWS_PROFILE=swh-platform-admin
 ```
 
-Verify:
+> Add this to your shell profile (`~/.zshrc` or `~/.bashrc`) if you use this account daily.
+
+Verify: `aws sts get-caller-identity`
+
+### 2. OpenTofu >= 1.6
 
 ```bash
-aws sts get-caller-identity
+# macOS
+brew install opentofu
+
+# Linux (or any OS via tfenv)
+curl --proto '=https' --tlsv1.2 -fsSL https://get.tofuenv.app | bash
+source ~/.bashrc
+tenv tofu install latest && tenv tofu use latest
 ```
+
+Verify: `tofu version` → should show `OpenTofu v1.8.x` or higher
 
 ---
 
-### kubectl
+### 3. Python 3.9+
 
-Required to connect to the EKS cluster, view pods/logs, and troubleshoot.
+```bash
+# macOS
+brew install python@3.12
+
+# Linux
+sudo apt-get install python3 python3-pip   # Debian/Ubuntu
+sudo yum install python3 python3-pip       # RHEL/Amazon Linux
+```
+
+Install required Python packages (these are pip-only — they cannot be installed via brew):
+
+```bash
+pip3 install PyGithub boto3 requests
+```
+
+> **Gotcha — `externally-managed-environment` error on newer macOS:** Python 3.12+ from Homebrew
+> blocks system-wide pip installs by default. Fix it with:
+> ```bash
+> pip3 install PyGithub boto3 requests --break-system-packages
+> ```
+
+Verify: `python3 --version` → `Python 3.9+`
+
+---
+
+### 4. GitHub CLI
+
+```bash
+# macOS
+brew install gh
+
+# Linux
+(type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y))
+sudo mkdir -p -m 755 /etc/apt/keyrings
+wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
+sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] \
+  https://cli.github.com/packages stable main" \
+  | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt update && sudo apt install gh -y
+```
+
+Authenticate:
+
+```bash
+gh auth login
+# Select: GitHub.com → HTTPS → Login with a web browser (or paste a token)
+```
+
+Verify: `gh auth status`
+
+---
+
+### 5. kubectl
+
+Used to verify cluster access after provisioning and for any manual troubleshooting.
 
 ```bash
 # macOS
@@ -90,104 +168,18 @@ sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 
 Verify: `kubectl version --client`
 
-Connect to the cluster (run once, or after credentials expire):
-
-```bash
-aws eks update-kubeconfig \
-  --name {{CLIENT_NAME}}-eks-dev \
-  --region us-east-1
-```
-
 ---
 
-### git
+### 6. git
 
 ```bash
 # macOS — ships with Xcode Command Line Tools
 xcode-select --install
 
 # Linux
-sudo apt-get install git       # Debian/Ubuntu
-sudo yum install git           # RHEL/Amazon Linux
+sudo apt-get install git   # Debian/Ubuntu
+sudo yum install git       # RHEL/Amazon Linux
 ```
-
----
-
-### Docker or Podman
-
-Required to build and test application images locally before pushing.
-
-```bash
-# macOS — install Docker Desktop or Podman Desktop
-# Docker: https://www.docker.com/products/docker-desktop/
-# Podman: https://podman-desktop.io/
-
-# Linux
-sudo apt-get install docker.io    # Debian/Ubuntu (Docker)
-# or:
-sudo apt-get install podman       # Debian/Ubuntu (Podman)
-```
-
-Verify: `docker --version` or `podman --version`
-
----
-
-### Node.js >= 18 (frontend development)
-
-Required only if you are working on React frontend code locally.
-
-```bash
-# macOS
-brew install node
-
-# Linux / any OS (recommended — use nvm)
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-source ~/.bashrc
-nvm install 20 && nvm use 20
-```
-
-Verify: `node --version`
-
----
-
-### Python 3.9+ (backend development)
-
-Required only if you are working on Flask backend code locally.
-
-```bash
-# macOS
-brew install python@3.12
-
-# Linux
-sudo apt-get install python3 python3-pip    # Debian/Ubuntu
-sudo yum install python3 python3-pip        # RHEL/Amazon Linux
-```
-
-Install backend dependencies for local development:
-
-```bash
-cd application/<your-app>/backend
-pip3 install -r requirements.txt
-```
-
-Verify: `python3 --version`
-
----
-
-### GitHub CLI (optional but recommended)
-
-Useful for triggering workflows, viewing run logs, and managing PRs from the terminal.
-
-```bash
-# macOS
-brew install gh
-
-# Linux
-sudo apt-get install gh    # after adding the GitHub CLI apt repo
-# See: https://github.com/cli/cli/blob/trunk/docs/install_linux.md
-```
-
-Authenticate: `gh auth login`
 
 ---
 
