@@ -41,7 +41,9 @@ jobs:
   plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.destroy != 'true')
+      || github.event.pull_request.merged == true
     outputs:
       tfplan_exitcode: ${{ steps.plan.outputs.exitcode }}
 
@@ -315,7 +317,6 @@ jobs:
   destroy:
     name: Terraform Destroy
     runs-on: ubuntu-latest
-    needs: plan
     if: github.event.inputs.destroy == 'true'
     environment: destroy-gate   # require manual approval before destroy
 

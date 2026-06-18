@@ -15,5 +15,9 @@ output "oidc_provider_arn" {
 }
 
 output "node_group_role_arn" {
-  value = module.eks.eks_managed_node_groups["default"].iam_role_arn
+  value = aws_iam_role.eks_compute.arn
+}
+
+output "cluster_role_arn" {
+  value = aws_iam_role.eks_cluster.arn
 }

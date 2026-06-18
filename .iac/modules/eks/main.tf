@@ -5,10 +5,12 @@
 # ---------------------------------------------------------------------------
 
 locals {
-  node_role_additional_policies = {
-    cloudwatch_agent = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
-    xray_daemon      = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+  role_tags = {
+    Client      = var.client_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
   }
+
   admin_access_entries = {
     for idx, principal_arn in var.admin_principal_arns : "admin_${idx}" => {
       kubernetes_groups = []
@@ -25,6 +27,76 @@ locals {
   }
 }
 
+resource "aws_iam_role" "eks_cluster" {
+  name                 = "${var.cluster_name}-cluster-role"
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "eks.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+
+  tags = merge(local.role_tags, {
+    Name = "${var.cluster_name}-cluster-role"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
+  role       = aws_iam_role.eks_cluster.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+}
+
+resource "aws_iam_role" "eks_compute" {
+  name                 = "${var.cluster_name}-compute-role"
+  permissions_boundary = var.permissions_boundary != "" ? var.permissions_boundary : null
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+
+  tags = merge(local.role_tags, {
+    Name = "${var.cluster_name}-compute-role"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "eks_compute_worker" {
+  role       = aws_iam_role.eks_compute.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "eks_compute_ecr_pull" {
+  role       = aws_iam_role.eks_compute.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+resource "aws_iam_role_policy_attachment" "eks_compute_cni" {
+  role       = aws_iam_role.eks_compute.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+}
+
+resource "aws_iam_role_policy_attachment" "eks_compute_cloudwatch" {
+  role       = aws_iam_role.eks_compute.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "eks_compute_xray" {
+  role       = aws_iam_role.eks_compute.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+}
+
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.0"
@@ -35,6 +107,8 @@ module "eks" {
   vpc_id                         = var.vpc_id
   subnet_ids                     = var.private_subnet_ids
   cluster_endpoint_public_access = true # set false and use VPN/bastion for prod
+  create_iam_role                = false
+  iam_role_arn                   = aws_iam_role.eks_cluster.arn
 
   # EKS Managed Add-ons
   cluster_addons = {
@@ -65,11 +139,8 @@ module "eks" {
       max_size       = var.node_max_size
       desired_size   = var.node_desired_size
 
-      # Explicit short role name — avoids the 38-char prefix limit when
-      # the cluster name is long (EKS module appends "-eks-node-group-")
-      iam_role_name            = "${var.cluster_name}-nodes"
-      iam_role_use_name_prefix = false
-      iam_role_additional_policies = local.node_role_additional_policies
+      create_iam_role = false
+      iam_role_arn    = aws_iam_role.eks_compute.arn
 
       # ami_type must be set when use_latest_ami_release_version = true
       ami_type                       = "AL2_x86_64"
@@ -87,9 +158,8 @@ module "eks" {
       max_size       = var.tooling_node_max_size
       desired_size   = var.tooling_node_desired_size
 
-      iam_role_name            = "${var.cluster_name}-nodes-tooling"
-      iam_role_use_name_prefix = false
-      iam_role_additional_policies = local.node_role_additional_policies
+      create_iam_role = false
+      iam_role_arn    = aws_iam_role.eks_compute.arn
 
       ami_type                       = "AL2_x86_64"
       use_latest_ami_release_version = true
@@ -115,9 +185,8 @@ module "eks" {
       max_size       = var.app_node_max_size
       desired_size   = var.app_node_desired_size
 
-      iam_role_name            = "${var.cluster_name}-nodes-app"
-      iam_role_use_name_prefix = false
-      iam_role_additional_policies = local.node_role_additional_policies
+      create_iam_role = false
+      iam_role_arn    = aws_iam_role.eks_compute.arn
 
       ami_type                       = "AL2_x86_64"
       use_latest_ami_release_version = true
@@ -158,6 +227,15 @@ module "eks" {
   tags = {
     Name = var.cluster_name
   }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.eks_cluster_policy,
+    aws_iam_role_policy_attachment.eks_compute_worker,
+    aws_iam_role_policy_attachment.eks_compute_ecr_pull,
+    aws_iam_role_policy_attachment.eks_compute_cni,
+    aws_iam_role_policy_attachment.eks_compute_cloudwatch,
+    aws_iam_role_policy_attachment.eks_compute_xray,
+  ]
 }
 
 # ── IRSA for EBS CSI Driver ───────────────────────────────────────────────────

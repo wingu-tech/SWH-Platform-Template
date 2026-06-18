@@ -15,6 +15,10 @@ variable "app_node_desired_size" { type = number }
 variable "app_node_min_size" { type = number }
 variable "app_node_max_size" { type = number }
 variable "cicd_role_arn" { type = string }
+variable "permissions_boundary" {
+  type    = string
+  default = ""
+}
 variable "admin_principal_arns" {
   type    = list(string)
   default = []
