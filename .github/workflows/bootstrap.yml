@@ -39,7 +39,7 @@ env:
 jobs:
   # ── Setup & Plan ────────────────────────────────────────────────────────────
   plan:
-    name: Terraform Plan
+    name: OpenTofu Plan
     runs-on: ubuntu-latest
     if: >
       (github.event_name == 'workflow_dispatch' && github.event.inputs.destroy != 'true')
@@ -63,21 +63,21 @@ jobs:
         with:
           tofu_version: ${{ env.OPENTOFU_VERSION }}
 
-      - name: Terraform Init
+      - name: OpenTofu Init
         working-directory: ${{ env.WORKING_DIR }}
         run: tofu init -input=false
 
-      - name: Terraform Format
+      - name: OpenTofu Format
         working-directory: ${{ env.WORKING_DIR }}
         # Auto-fix formatting rather than failing the deployment over whitespace.
         # validate.yml handles format checks on PRs where developer feedback matters.
         run: tofu fmt -recursive
 
-      - name: Terraform Validate
+      - name: OpenTofu Validate
         working-directory: ${{ env.WORKING_DIR }}
         run: tofu validate
 
-      - name: Terraform Plan
+      - name: OpenTofu Plan
         id: plan
         working-directory: ${{ env.WORKING_DIR }}
         run: |
@@ -104,7 +104,7 @@ jobs:
       - name: Post Plan to Summary
         working-directory: ${{ env.WORKING_DIR }}
         run: |
-          echo "## Terraform Plan" >> $GITHUB_STEP_SUMMARY
+          echo "## OpenTofu Plan" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat plan_output.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
@@ -127,7 +127,7 @@ jobs:
 
   # ── Apply ────────────────────────────────────────────────────────────────────
   apply:
-    name: Terraform Apply
+    name: OpenTofu Apply
     runs-on: ubuntu-latest
     needs: plan
     if: needs.plan.result == 'success' && github.ref == 'refs/heads/main' && github.event.inputs.destroy != 'true'
@@ -149,7 +149,7 @@ jobs:
         with:
           tofu_version: ${{ env.OPENTOFU_VERSION }}
 
-      - name: Terraform Init
+      - name: OpenTofu Init
         working-directory: ${{ env.WORKING_DIR }}
         run: tofu init -input=false
 
@@ -187,7 +187,7 @@ jobs:
             --key "{\"LockID\": {\"S\": \"${{ secrets.TF_STATE_BUCKET }}/${STATE_KEY}\"}}" \
             --region ${{ env.AWS_REGION }} 2>/dev/null || true
 
-      - name: Terraform Apply
+      - name: OpenTofu Apply
         working-directory: ${{ env.WORKING_DIR }}
         run: tofu apply -input=false -auto-approve tfplan
 
@@ -315,7 +315,7 @@ jobs:
 
   # ── Destroy (manual/emergency only) ─────────────────────────────────────────
   destroy:
-    name: Terraform Destroy
+    name: OpenTofu Destroy
     runs-on: ubuntu-latest
     if: github.event.inputs.destroy == 'true'
     environment: destroy-gate   # require manual approval before destroy
@@ -336,7 +336,7 @@ jobs:
         with:
           tofu_version: ${{ env.OPENTOFU_VERSION }}
 
-      - name: Terraform Init
+      - name: OpenTofu Init
         working-directory: ${{ env.WORKING_DIR }}
         run: tofu init -input=false
 
@@ -498,7 +498,7 @@ jobs:
             tofu state rm "$r" 2>/dev/null && echo "Removed from state: $r" || true
           done
 
-      - name: Terraform Destroy — EKS + Monitoring + Security
+      - name: OpenTofu Destroy — EKS + Monitoring + Security
         working-directory: ${{ env.WORKING_DIR }}
         # Destroy EKS first so worker nodes are terminated and release their ENIs.
         # k8s-traffic SGs are attached to node ENIs — they cannot be deleted while
@@ -627,13 +627,13 @@ jobs:
             sleep 15
           done
 
-      - name: Terraform Destroy — VPC
+      - name: OpenTofu Destroy — VPC
         working-directory: ${{ env.WORKING_DIR }}
         run: |
           tofu destroy -input=false -auto-approve -lock=false \
             -target=module.vpc
 
-      - name: Terraform Destroy — IAM (last)
+      - name: OpenTofu Destroy — IAM (last)
         working-directory: ${{ env.WORKING_DIR }}
         # IAM is destroyed last so the CICD role survives long enough to save state.
         # After this step the session will be invalid — that's expected.

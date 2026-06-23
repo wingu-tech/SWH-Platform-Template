@@ -1,6 +1,6 @@
 # {{CLIENT_NAME}}
 
-> Auto-generated from [wingu-tech/SWH-Platform-Template](https://github.com/wingu-tech/SWH-Platform-Template)
+> Auto-generated from `SWH-Platform-Template`
 > by the EKSclientPortal bootstrap pipeline.
 
 This single repository contains everything for the **{{CLIENT_NAME}}** environment:

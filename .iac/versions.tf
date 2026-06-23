@@ -25,7 +25,7 @@ provider "aws" {
       Client      = var.client_name
       Environment = var.environment
       ManagedBy   = "terraform"
-      Repo        = "wingu-tech/${var.client_name}-infra"
+      Repo        = "${var.github_org}/${var.github_platform_repo}"
     }
   }
 }

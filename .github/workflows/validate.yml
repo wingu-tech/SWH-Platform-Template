@@ -44,7 +44,7 @@ jobs:
         with:
           tofu_version: ${{ env.OPENTOFU_VERSION }}
 
-      - name: Terraform Init
+      - name: OpenTofu Init
         working-directory: ${{ env.WORKING_DIR }}
         run: tofu init -input=false
 
@@ -59,7 +59,7 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
         run: tofu validate -no-color
 
-      - name: Terraform Plan
+      - name: OpenTofu Plan
         id: plan
         working-directory: ${{ env.WORKING_DIR }}
         run: tofu plan -no-color -input=false -lock=false 2>&1 | tee plan_output.txt

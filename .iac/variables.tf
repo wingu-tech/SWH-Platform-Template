@@ -177,7 +177,7 @@ variable "eks_admin_principal_arns" {
 # ── IAM / GitHub OIDC ─────────────────────────────────────────────────────────
 
 variable "github_org" {
-  description = "GitHub organization name (e.g. wingu-tech)."
+  description = "GitHub organization name (e.g. software-house)."
   type        = string
 }
 
